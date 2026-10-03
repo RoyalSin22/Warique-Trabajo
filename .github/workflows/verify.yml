@@ -15,7 +15,8 @@ permissions:
 
 concurrency:
   group: verify-${{ github.ref }}
-  cancel-in-progress: true
+  # Queue instead of cancelling: a Windows run takes ~25 min and each one is worth finishing
+  cancel-in-progress: false
 
 env:
   FLUTTER_VERSION: '3.47.6'
