@@ -131,7 +131,7 @@ Requirements: Flutter 3.44+ (tested with 3.47.6 / Dart 3.13). Screens in this it
 | Role | Screens |
 |---|---|
 | WAITER | Today's orders (ready / to collect / in kitchen), new order (or "another order for this table" from an order's detail) (table or takeaway, sold-out dishes blocked live), order detail, deliver, cancel, payment (cash with change, Yape/Plin with operation number) |
-| KITCHEN | Live board (pending / in preparation, FIFO, late orders in red, alert on cancellations), sold-out switches, **Insumos** (stock with "por comprar" list, counts, waste, use, history) |
+| KITCHEN | Live board (pending / in preparation, FIFO, late orders in red, alert on cancellations), sold-out switches, **Insumos** (stock with "por comprar" list, counts, waste, use, history; low-stock count badge on the tab) |
 | OWNER | Waiter and kitchen screens, plus **Cierre** (daily closing: sales, collections, expenses and sales − expenses, **cash count** with the difference shown as "Cuadra" / "Faltan" / "Sobran", collections per method, top dishes, every payment with its Yape/Plin operation number, backup health; **Estadísticas**: sales per day, weekday averages, top dishes by quantity or revenue, orders per hour, payment split and expenses by category for 7/30/90 days or this month, each chart with a table view) and **Gestión** (**expenses** with optional supply lines, voiding with a reason; **supplies** with minimum stock alerts; menu with categories, prices and sold-out switches; tables; staff accounts and password resets; QR codes to connect staff phones) |
 | All | Change own password from the account menu |
 
@@ -200,7 +200,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -GoogleDrive
 | Offline package | Production `node_modules` and the Prisma Windows engine are bundled: no internet or build tools needed on the PC |
 | Backups | Daily `mysqldump --single-transaction` (task as SYSTEM, runs late if the PC was off), integrity check, zip + SHA256, 30-day retention, copy to the owner's Google Drive (desktop client in *Mirror files* mode: *Stream files* mounts a per-user drive SYSTEM cannot see); the installer tests the copy through the real scheduled task |
 | Updates | `update.ps1`: backup, pending schema migrations, swap `app` / `app.previous`, health check, automatic rollback |
-| Schema changes | `database/migrations/NNN_*.sql`, idempotent and additive only (the previous version keeps working if an update rolls back); recorded in `schema_migrations`. Pending ones are detected with the read-only backup account, so the MySQL root password is asked only when there is something to apply (or taken from `WARIQUE_MYSQL_ADMIN_PASSWORD`) |
+| Schema changes | `database/migrations/NNN_*.sql`, idempotent and additive only (the previous version keeps working if an update rolls back); recorded in `schema_migrations`. A copy is kept in `C:\Warique\database\migrations` so `status.ps1` flags any change that was not applied (update cut short). Pending ones are detected with the read-only backup account, so the MySQL root password is asked only when there is something to apply (or taken from `WARIQUE_MYSQL_ADMIN_PASSWORD`) |
 | Windows | No sleep/hibernate on AC power, Windows Update active hours set to the opening hours |
 
 ## Conventions

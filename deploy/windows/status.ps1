@@ -1,6 +1,7 @@
 ﻿<#
 .SYNOPSIS
-  Diagnostico rapido de Warique: servicio, base de datos, ultimo respaldo, disco y direcciones.
+  Diagnostico rapido de Warique: servicio, base de datos (y cambios de esquema pendientes), ultimo
+  respaldo, disco y direcciones.
   No cambia nada. Util para soporte por telefono:
     powershell -ExecutionPolicy Bypass -File C:\Warique\scripts\status.ps1
 #>
@@ -29,6 +30,22 @@ try {
             $health.status, $health.database, $health.dbUtcOffsetMinutes, ($health.uptimeSeconds / 60))
 } catch {
     Show $false "API: no responde en el puerto $($config.port) ($($_.Exception.Message))"
+}
+
+# Read-only account: never needs the MySQL root password
+$migrationsDir = Get-InstalledMigrationsDir $InstallDir
+if (Test-Path -LiteralPath $migrationsDir) {
+    try {
+        $pending = @(Get-PendingMigrations $config.mysqlBinDir $config.backupOptionFile $config.database $migrationsDir)
+        if ($pending.Count -eq 0) {
+            Show $true 'Esquema de la base de datos al dia'
+        } else {
+            Show $false ("Cambios de base de datos SIN aplicar: {0}. Vuelve a ejecutar update.ps1 desde el paquete de la version {1}." -f `
+                    (($pending | ForEach-Object { $_.BaseName }) -join ', '), $config.version)
+        }
+    } catch {
+        Show $false "No se pudo revisar el esquema de la base de datos: $($_.Exception.Message)"
+    }
 }
 
 $statusFile = Join-Path $config.logDir 'ultimo-respaldo.json'

@@ -112,6 +112,7 @@ if (-not $health) {
 
 # Scripts and service wrapper are updated only after the new app is confirmed healthy
 Copy-Item -Path (Join-Path $PSScriptRoot '*.ps1') -Destination (Join-Path $InstallDir 'scripts') -Force
+Copy-Migrations $ReleaseDir $InstallDir
 Copy-Item -LiteralPath (Join-Path $ReleaseDir 'VERSION') -Destination $InstallDir -Force
 $config.version = $newVersion
 Save-DeployConfig $InstallDir $config

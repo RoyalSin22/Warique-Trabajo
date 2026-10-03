@@ -142,6 +142,17 @@ function Get-PendingMigrations([string]$MySqlBinDir, [string]$OptionFile, [strin
     return @($files | Where-Object { $applied -notcontains $_.BaseName })
 }
 
+# The installed version keeps a copy of its migrations so status.ps1 can tell whether the database
+# has every change the running app expects (an update interrupted by a power cut, for example)
+function Get-InstalledMigrationsDir([string]$InstallDir) { Join-Path $InstallDir 'database\migrations' }
+
+function Copy-Migrations([string]$ReleaseDir, [string]$InstallDir) {
+    $source = Join-Path $ReleaseDir 'database\migrations'
+    $target = Get-InstalledMigrationsDir $InstallDir
+    New-Item -ItemType Directory -Force -Path $target | Out-Null
+    if (Test-Path -LiteralPath $source) { Copy-Item -Path (Join-Path $source '*.sql') -Destination $target -Force }
+}
+
 # Each migration is idempotent (CREATE TABLE IF NOT EXISTS...), so a crash between applying a file
 # and recording it is fixed by running again. Needs an account with DDL rights (root).
 function Invoke-Migrations([string]$MySqlBinDir, [string]$AdminOptionFile, [string]$Database, [object[]]$Files) {

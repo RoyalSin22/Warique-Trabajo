@@ -75,6 +75,11 @@ List<Supply> sortSupplies(List<Supply> supplies) => [...supplies]
     return a.name.toLowerCase().compareTo(b.name.toLowerCase());
   });
 
+/// Active supplies at or under their minimum: the badge on the Insumos / Gestión tabs.
+final lowSupplyCountProvider = Provider.autoDispose<int>(
+  (ref) => ref.watch(suppliesProvider).value?.where((s) => s.isActive && s.isLow).length ?? 0,
+);
+
 final supplyMovementsProvider = FutureProvider.autoDispose
     .family<({Supply supply, List<SupplyMovement> movements}), int>(
       (ref, supplyId) => ref.watch(inventoryRepositoryProvider).movements(supplyId),

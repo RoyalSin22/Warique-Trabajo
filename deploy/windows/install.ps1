@@ -248,6 +248,7 @@ try {
             (Join-Path $ReleaseDir 'app'), $paths.App, '/MIR', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')) -NoNewWindow -Wait -PassThru
     if ($robocopy.ExitCode -ge 8) { throw "robocopy fallo con codigo $($robocopy.ExitCode)" }
     Copy-Item -Path (Join-Path $PSScriptRoot '*.ps1') -Destination $paths.Scripts -Force
+    Copy-Migrations $ReleaseDir $InstallDir
     Copy-Item -LiteralPath (Join-Path $ReleaseDir 'service\WinSW-x64.exe') -Destination (Join-Path $paths.Service 'warique.exe') -Force
     Copy-Item -LiteralPath (Join-Path $ReleaseDir 'VERSION') -Destination $InstallDir -Force
     Write-Ok "Aplicacion en $($paths.App)"

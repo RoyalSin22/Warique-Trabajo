@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:warique_app/core/dates.dart';
 import 'package:warique_app/data/realtime_client.dart';
 import 'package:warique_app/models/user.dart';
+import 'package:warique_app/ui/home_page.dart';
 import 'package:warique_app/ui/inventory/supplies_page.dart';
 import 'package:warique_app/ui/owner/cash_card.dart';
 import 'package:warique_app/ui/owner/expense_form_page.dart';
@@ -136,6 +137,44 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('60 und.'), findsOneWidget);
+    });
+  });
+
+  group('Aviso de stock bajo en la barra inferior', () {
+    (int, Object?) api(http.Request request) => switch (request.url.path) {
+      '/api/supplies' => (
+        200,
+        [
+          supplyJson(),
+          supplyJson(id: 2, name: 'Pescado', stock: '1', minStock: '3'),
+          supplyJson(id: 3, name: 'Arroz', stock: '12', minStock: '10', isLow: false),
+          supplyJson(id: 4, name: 'Viejo', stock: '0', minStock: '5', isActive: false),
+        ],
+      ),
+      _ => (200, <Object>[]),
+    };
+
+    testWidgets('kitchen sees how many supplies run low, live', (tester) async {
+      await pump(tester, const HomePage(), Role.kitchen, api);
+      expect(find.byTooltip('Insumos: 2 con stock bajo'), findsOneWidget); // the inactive one does not count
+
+      // The owner registered a purchase of Pescado
+      realtime.emit(
+        RealtimeEvent.supplyUpdated,
+        supplyJson(id: 2, name: 'Pescado', stock: '8', minStock: '3', isLow: false),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Insumos: 1 con stock bajo'), findsOneWidget);
+    });
+
+    testWidgets('owner sees it on Gestión', (tester) async {
+      await pump(tester, const HomePage(), Role.owner, api);
+      expect(find.byTooltip('Gestión: 2 con stock bajo'), findsOneWidget);
+    });
+
+    testWidgets('waiters never ask for supplies (their role cannot read them)', (tester) async {
+      await pump(tester, const HomePage(), Role.waiter, api);
+      expect(server.requests.where((r) => r.url.path == '/api/supplies'), isEmpty);
     });
   });
 

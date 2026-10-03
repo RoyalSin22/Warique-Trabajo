@@ -1,4 +1,4 @@
-# Warique: instalación y operación en la PC del local
+﻿# Warique: instalación y operación en la PC del local
 
 Guía para quien instala y da soporte. La sección **Operación diaria** es para el dueño.
 
@@ -105,6 +105,8 @@ Parámetros útiles: `-ActiveHoursStart 8 -ActiveHoursEnd 22 -BackupTime '18:30'
   con Yape, transferencia o de tu bolsillo. Una compra del mercado se registra como *Insumos* con una
   línea por insumo (cantidad y precio pagado): el stock sube solo. Un gasto mal registrado no se borra:
   tócalo y anúlalo indicando el motivo.
+- **Aviso de stock bajo:** un numerito rojo en la pestaña *Insumos* (cocina) y en *Gestión* (dueño)
+  indica cuántos insumos están en su mínimo o por debajo.
 - **Insumos:** en *Gestión → Insumos* creas los insumos con su mínimo (ej.: avisar cuando queden 3 kg
   de pescado). La cocina, en su pestaña *Insumos*, registra **conteos** (lo que hay realmente),
   **mermas** (lo que se malogró) y **usos**. Arriba aparece la lista *Por comprar*. Vender un plato
@@ -151,6 +153,9 @@ horario de atención.
 Si la versión trae cambios de base de datos (carpeta `database\migrations`), pedirá la **clave de
 root de MySQL** (la misma de la instalación); si no hay cambios, no la pide. Los cambios solo agregan
 tablas o columnas, así que la versión anterior sigue funcionando si hubiera que volver a ella.
+
+Si la actualización se interrumpe (corte de luz), `status.ps1` lo detecta y muestra
+*Cambios de base de datos SIN aplicar*: vuelve a ejecutar `update.ps1` desde el mismo paquete.
 
 ## 7. Diagnóstico
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../state/inventory.dart';
 import '../inventory/supplies_page.dart';
 import '../widgets/common.dart';
 import 'connect_devices_page.dart';
@@ -14,6 +15,7 @@ class AdminPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final lowStock = ref.watch(lowSupplyCountProvider);
     void open(Widget page) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
     return Scaffold(
       appBar: AppBar(title: const Text('Gestión'), actions: const [ConnectionIndicator(), LogoutButton()]),
@@ -36,8 +38,18 @@ class AdminPage extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.inventory_2),
             title: const Text('Insumos'),
-            subtitle: const Text('Stock, conteos, mermas y alertas de stock bajo'),
-            trailing: const Icon(Icons.chevron_right),
+            subtitle: Text(
+              lowStock > 0
+                  ? '$lowStock con stock bajo: revisa qué comprar'
+                  : 'Stock, conteos, mermas y alertas',
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (lowStock > 0) Badge(label: Text('$lowStock')),
+                const Icon(Icons.chevron_right),
+              ],
+            ),
             onTap: () => open(const SuppliesPage(canManage: true)),
           ),
           ListTile(

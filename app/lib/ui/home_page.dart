@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/user.dart';
+import '../state/inventory.dart';
 import '../state/session.dart';
 import 'inventory/supplies_page.dart';
 import 'kitchen/dish_availability_page.dart';
@@ -29,17 +30,19 @@ class _HomePageState extends ConsumerState<HomePage> {
       Role.kitchen => const [
         _Tab('Cocina', Icons.soup_kitchen, KitchenBoardPage()),
         _Tab('Platos', Icons.no_meals, DishAvailabilityPage()),
-        _Tab('Insumos', Icons.inventory_2, SuppliesPage()),
+        _Tab('Insumos', Icons.inventory_2, SuppliesPage(), showsLowStock: true),
       ],
       // Sold-out switches for the owner live in Gestión > Menú
       Role.owner => const [
         _Tab('Pedidos', Icons.receipt_long, WaiterOrdersPage()),
         _Tab('Cocina', Icons.soup_kitchen, KitchenBoardPage()),
         _Tab('Cierre', Icons.point_of_sale, ReportPage()),
-        _Tab('Gestión', Icons.settings, AdminPage()),
+        _Tab('Gestión', Icons.settings, AdminPage(), showsLowStock: true),
       ],
     };
     final index = _index.clamp(0, tabs.length - 1);
+    // Waiters never see supplies: their account cannot read them
+    final lowStock = role == Role.waiter ? 0 : ref.watch(lowSupplyCountProvider);
 
     return Scaffold(
       body: IndexedStack(index: index, children: [for (final tab in tabs) tab.page]),
@@ -49,7 +52,18 @@ class _HomePageState extends ConsumerState<HomePage> {
               selectedIndex: index,
               onDestinationSelected: (value) => setState(() => _index = value),
               destinations: [
-                for (final tab in tabs) NavigationDestination(icon: Icon(tab.icon), label: tab.label),
+                for (final tab in tabs)
+                  NavigationDestination(
+                    icon: Badge(
+                      isLabelVisible: tab.showsLowStock && lowStock > 0,
+                      label: Text('$lowStock'),
+                      child: Icon(tab.icon),
+                    ),
+                    label: tab.label,
+                    tooltip: tab.showsLowStock && lowStock > 0
+                        ? '${tab.label}: $lowStock con stock bajo'
+                        : null,
+                  ),
               ],
             ),
     );
@@ -57,9 +71,12 @@ class _HomePageState extends ConsumerState<HomePage> {
 }
 
 class _Tab {
-  const _Tab(this.label, this.icon, this.page);
+  const _Tab(this.label, this.icon, this.page, {this.showsLowStock = false});
 
   final String label;
   final IconData icon;
   final Widget page;
+
+  /// Badge with the number of supplies at or under their minimum.
+  final bool showsLowStock;
 }

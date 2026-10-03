@@ -145,6 +145,9 @@ Check 'expenses, supplies and cash count (migration 001 applied by install.ps1)'
     Write-Host "      stock $($after.stock), expected $($cash.live.expected), difference $($cash.session.difference), expenses $($daily.expensesTotal)"
     [decimal]$after.stock -eq 2 -and [decimal]$cash.live.expected -eq 30 -and [decimal]$cash.session.difference -eq 0 -and [decimal]$daily.expensesTotal -eq 20
 }
+Check 'installed copy of the migrations for status.ps1' {
+    Test-Path "$InstallDir\database\migrations\001_expenses_supplies_cash.sql"
+}
 Check 'status.ps1 reports everything in order' {
     & powershell -NoProfile -ExecutionPolicy Bypass -File "$InstallDir\scripts\status.ps1"
     $LASTEXITCODE -eq 0
@@ -198,6 +201,20 @@ Check 'update.ps1 applies a pending migration, installs the release and keeps ap
     Write-Host "      update exit $updateExit, migrations: $($versions -join ', ')"
     $updateExit -eq 0 -and ($versions -contains '001_expenses_supplies_cash') -and ($versions -contains '900_ci_check') -and
         (Test-Path "$InstallDir\app.previous\dist\main.js") -and (Health).status -eq 'ok'
+}
+Check 'status.ps1 flags a database change that was not applied' {
+    # Simulates an update cut short: 900 is in C:\Warique\database\migrations but not recorded
+    $config = Get-Content "$InstallDir\config\deploy.json" -Raw | ConvertFrom-Json
+    $mysql = "$($config.mysqlBinDir)\mysql.exe"
+    $root = "--password=$env:WARIQUE_MYSQL_ADMIN_PASSWORD"
+    if (-not (Test-Path "$InstallDir\database\migrations\900_ci_check.sql")) { throw 'update.ps1 did not copy the migrations' }
+    & $mysql -uroot $root "--execute=DELETE FROM $($config.database).schema_migrations WHERE version = '900_ci_check'"
+    $output = & powershell -NoProfile -ExecutionPolicy Bypass -File "$InstallDir\scripts\status.ps1" 2>&1 | Out-String
+    $flagged = $LASTEXITCODE -eq 1 -and $output -match 'SIN aplicar: 900_ci_check'
+    & $mysql -uroot $root "--execute=INSERT INTO $($config.database).schema_migrations (version) VALUES ('900_ci_check')"
+    & powershell -NoProfile -ExecutionPolicy Bypass -File "$InstallDir\scripts\status.ps1" | Out-Null
+    Write-Host "      flagged: $flagged, clean again: $($LASTEXITCODE -eq 0)"
+    $flagged -and $LASTEXITCODE -eq 0
 }
 Check 'a broken release is rolled back automatically' {
     $broken = Join-Path $env:RUNNER_TEMP 'broken-release'
