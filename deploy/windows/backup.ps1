@@ -91,7 +91,9 @@ try {
         }
     }
 
-    Save-Status @{ ok = $true; file = $zip.Name; sizeBytes = $zip.Length; sha256 = $hash; copied = $copied; error = $null }
+    # Safety copies (-NoCopy, e.g. before a restore) do not replace the nightly backup's status,
+    # otherwise the owner would see "not copied to Google Drive" until the next night
+    if (-not $NoCopy) { Save-Status @{ ok = $true; file = $zip.Name; sizeBytes = $zip.Length; sha256 = $hash; copied = $copied; error = $null } }
     exit $exitCode
 } catch {
     Write-BackupLog 'ERROR' $_.Exception.Message

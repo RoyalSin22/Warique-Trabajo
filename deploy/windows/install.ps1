@@ -38,7 +38,10 @@ param(
     [int]$ActiveHoursStart = 8,
     [ValidateRange(0, 23)]
     [int]$ActiveHoursEnd = 22,
-    [switch]$SkipWindowsSettings
+    [switch]$SkipWindowsSettings,
+    # Instalacion desatendida: acepta los ajustes de my.ini sin preguntar (nunca cambia el tipo de red).
+    # Las claves se toman de WARIQUE_MYSQL_ADMIN_PASSWORD, OWNER_USERNAME, OWNER_FULL_NAME y OWNER_PASSWORD.
+    [switch]$AssumeYes
 )
 
 $ErrorActionPreference = 'Stop'
@@ -61,6 +64,7 @@ $adminOptionFile = Join-Path $paths.Config ('admin-' + [Guid]::NewGuid().ToStrin
 $setupSqlFile = Join-Path $paths.Config ('setup-' + [Guid]::NewGuid().ToString('N') + '.sql')
 
 function Confirm-Choice([string]$Question) {
+    if ($AssumeYes) { Write-Host "$Question [S/N] S (-AssumeYes)"; return $true }
     return ((Read-Host "$Question [S/N]") -match '^[sSyY]')
 }
 
@@ -201,7 +205,8 @@ try {
     Write-Step 'Base de datos'
     New-Item -ItemType Directory -Force -Path $paths.Config | Out-Null
     Set-RestrictedAcl $paths.Config
-    $rootPassword = Read-PlainSecret 'Clave del usuario root de MySQL (no se guarda)'
+    $rootPassword = $env:WARIQUE_MYSQL_ADMIN_PASSWORD
+    if (-not $rootPassword) { $rootPassword = Read-PlainSecret 'Clave del usuario root de MySQL (no se guarda)' }
     New-MySqlOptionFile $adminOptionFile 'root' $rootPassword $MySqlPort
     $rootPassword = $null
 
@@ -282,9 +287,9 @@ try {
     $owners = Invoke-MySqlQuery $mysql.BinDir $adminOptionFile "SELECT COUNT(*) FROM $Database.users WHERE role = 'OWNER' AND is_active = 1"
     if ($owners -eq '0') {
         Write-Step 'Cuenta del dueno (para entrar a la app)'
-        $env:OWNER_USERNAME = (Read-Host 'Usuario (minusculas, sin espacios, ej. dueno)').Trim().ToLower()
-        $env:OWNER_FULL_NAME = Read-Host 'Nombre completo'
-        $env:OWNER_PASSWORD = Read-NewPassword 'Clave del dueno' 10
+        if (-not $env:OWNER_USERNAME) { $env:OWNER_USERNAME = (Read-Host 'Usuario (minusculas, sin espacios, ej. dueno)').Trim().ToLower() }
+        if (-not $env:OWNER_FULL_NAME) { $env:OWNER_FULL_NAME = Read-Host 'Nombre completo' }
+        if (-not $env:OWNER_PASSWORD) { $env:OWNER_PASSWORD = Read-NewPassword 'Clave del dueno' 10 }
         $env:WARIQUE_ENV_FILE = $envFile
         try {
             $result = Invoke-Native $node.Source @('dist\cli\create-owner.js') $paths.App
@@ -341,7 +346,8 @@ try {
     Write-Ok "Puerto $Port abierto solo para redes privadas"
     foreach ($netProfile in @(Get-NetConnectionProfile | Where-Object { $_.NetworkCategory -eq 'Public' })) {
         Write-Warn "La red '$($netProfile.Name)' es Publica: los celulares no podran conectarse."
-        if (Confirm-Choice "    Marcar '$($netProfile.Name)' como red Privada? (solo si es la red del local)") {
+        # Never automatic: only a person can tell whether this is the restaurant's own network
+        if (-not $AssumeYes -and (Confirm-Choice "    Marcar '$($netProfile.Name)' como red Privada? (solo si es la red del local)")) {
             Set-NetConnectionProfile -InterfaceIndex $netProfile.InterfaceIndex -NetworkCategory Private
             Write-Ok "'$($netProfile.Name)' ahora es Privada"
         }
