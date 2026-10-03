@@ -3,7 +3,7 @@
   Instala Warique en la PC del local como servicio de Windows.
 .DESCRIPTION
   Ejecutar como administrador desde la carpeta del paquete descomprimido:
-    powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -BackupCopyDir 'E:\RespaldosWarique'
+    powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -GoogleDrive
 
   Pasos (cada uno se puede repetir sin romper nada):
    1. Verifica Node.js 22+ y el servicio de MySQL; ajusta my.ini (UTC y solo acceso local) con confirmacion.
@@ -27,6 +27,9 @@ param(
     [string]$BackupTime = '18:30',
     # Segunda copia del respaldo: USB, disco externo o carpeta sincronizada (OneDrive/Google Drive)
     [string]$BackupCopyDir = '',
+    # Usa la carpeta de Google Drive para escritorio (modo "duplicar archivos") como copia externa:
+    # <perfil>\My Drive\RespaldosWarique o <perfil>\Mi unidad\RespaldosWarique
+    [switch]$GoogleDrive,
     [ValidateRange(3, 365)]
     [int]$RetentionDays = 30,
     # Horas en las que Windows Update no reinicia la PC (maximo 18 horas). Atencion 11:00-18:00:
@@ -122,6 +125,31 @@ try {
     $version = (Get-Content -LiteralPath (Join-Path $ReleaseDir 'VERSION') -Raw).Trim()
     if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
         throw "Warique ya esta instalado. Para una version nueva usa scripts\update.ps1."
+    }
+    if ($GoogleDrive) {
+        if ($BackupCopyDir) { throw 'Usa -GoogleDrive o -BackupCopyDir, no ambos.' }
+        $driveFolders = @(Find-GoogleDriveMirrorFolder)
+        if ($driveFolders.Count -eq 0) {
+            throw ('No se encontro la carpeta de Google Drive (C:\Users\<usuario>\My Drive o Mi unidad). ' +
+                'Instala Google Drive para escritorio, inicia sesion con la cuenta del dueno y en ' +
+                'Preferencias > Mi unidad elige "Duplicar archivos" (Mirror files). Ver GUIA-INSTALACION.md.')
+        }
+        $driveFolder = $driveFolders[0]
+        if ($driveFolders.Count -gt 1) {
+            for ($i = 0; $i -lt $driveFolders.Count; $i++) { Write-Host "    [$($i + 1)] $($driveFolders[$i])" }
+            $choice = [int](Read-Host 'Carpeta de Google Drive del dueno (numero)')
+            if ($choice -lt 1 -or $choice -gt $driveFolders.Count) { throw 'Opcion invalida.' }
+            $driveFolder = $driveFolders[$choice - 1]
+        }
+        $BackupCopyDir = Join-Path $driveFolder 'RespaldosWarique'
+    }
+    if ($BackupCopyDir) {
+        if (Test-GoogleDriveStreamPath $BackupCopyDir) {
+            throw ("$BackupCopyDir esta en la unidad virtual de Google Drive (modo 'Transmitir archivos'), " +
+                'que la tarea de respaldo (cuenta SYSTEM) no puede ver. Cambia Google Drive a "Duplicar archivos" ' +
+                'y usa -GoogleDrive.')
+        }
+        New-Item -ItemType Directory -Force -Path $BackupCopyDir | Out-Null
     }
     if ((($ActiveHoursEnd - $ActiveHoursStart + 24) % 24) -gt 18) {
         throw 'Windows permite como maximo 18 horas activas. Ajusta -ActiveHoursStart/-ActiveHoursEnd.'
@@ -359,10 +387,30 @@ try {
     if ($health.dbUtcOffsetMinutes -ne 0) { throw 'La base de datos no esta en UTC (ver my.ini).' }
     Write-Ok "Warique $($health.version) en linea"
 
-    & $backupScript -InstallDir $InstallDir -Tag 'instalacion'
-    if ($LASTEXITCODE -eq 1) { Write-Warn 'El respaldo de prueba fallo: revisa logs\backup.log' }
-    elseif ($LASTEXITCODE -eq 2) { Write-Warn "El respaldo local funciona, pero $BackupCopyDir no esta disponible." }
-    else { Write-Ok 'Respaldo de prueba correcto' }
+    # Test through the scheduled task itself: it runs as SYSTEM, which may not see folders that
+    # this administrator session sees (mapped drives, Google Drive in streaming mode)
+    Write-Step 'Respaldo de prueba (como lo hara cada noche)'
+    $startedAt = Get-Date
+    Start-ScheduledTask -TaskName 'Warique - Respaldo diario'
+    $deadline = $startedAt.AddMinutes(5)
+    do {
+        Start-Sleep -Seconds 3
+        $taskInfo = Get-ScheduledTaskInfo -TaskName 'Warique - Respaldo diario'
+        $task = Get-ScheduledTask -TaskName 'Warique - Respaldo diario'
+    } while (($task.State -eq 'Running' -or $taskInfo.LastRunTime -lt $startedAt.AddSeconds(-5)) -and (Get-Date) -lt $deadline)
+    $statusFile = Join-Path $paths.Logs 'ultimo-respaldo.json'
+    $lastBackup = if (Test-Path -LiteralPath $statusFile) { Get-Content -LiteralPath $statusFile -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
+    if (-not $lastBackup -or -not $lastBackup.ok) {
+        Write-Warn "El respaldo de prueba fallo (resultado $($taskInfo.LastTaskResult)): revisa logs\backup.log"
+    } elseif ($BackupCopyDir -and -not $lastBackup.copied) {
+        Write-Warn "El respaldo local funciona, pero la tarea no pudo copiar a $BackupCopyDir."
+    } else {
+        Write-Ok "Respaldo de prueba correcto: $($lastBackup.file)$(if ($lastBackup.copied) { ", copiado a $BackupCopyDir" })"
+        if ($GoogleDrive) {
+            Write-Warn 'Google Drive solo sube los archivos mientras la sesion de Windows del dueno esta iniciada.'
+            Write-Host '    Revisa en drive.google.com que aparezca la carpeta RespaldosWarique.'
+        }
+    }
 
     Write-Host "`nInstalacion terminada." -ForegroundColor Green
     Write-Host 'Abre la app desde celulares y tablets conectados al Wi-Fi del local:'

@@ -159,7 +159,7 @@ class _BackupCard extends ConsumerWidget {
     } else if ((status.ageHours ?? 999) > 26) {
       message = 'El último respaldo es de ${ageLabel(status.ageHours!)}. ¿La PC estuvo apagada?';
     } else if (!status.copied) {
-      message = 'Respaldo hecho ${ageLabel(status.ageHours!)}, pero NO se copió al USB / nube.';
+      message = 'Respaldo hecho ${ageLabel(status.ageHours!)}, pero NO se copió a Google Drive.';
     } else {
       message = 'Respaldo al día: ${ageLabel(status.ageHours!)}, con copia externa.';
     }

@@ -160,7 +160,7 @@ app over the local Wi-Fi at `http://<pc-ip>:3000`. Full runbook (Spanish):
 powershell -ExecutionPolicy Bypass -File deploy\windows\build-release.ps1 -WithApk
 
 # Restaurant PC (as administrator, inside the extracted package)
-powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -BackupCopyDir 'D:\Respaldos'
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -GoogleDrive
 ```
 
 | Concern | Decision |
@@ -170,7 +170,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -BackupCopyDir 'D
 | Secrets | `config\.env` and MySQL option files, ACL Administrators + SYSTEM (+ service read on `.env`); MySQL passwords are random and never typed on a command line |
 | Network | One port (app + API + Socket.IO), firewall rule for Private networks only; MySQL bound to `127.0.0.1` |
 | Offline package | Production `node_modules` and the Prisma Windows engine are bundled: no internet or build tools needed on the PC |
-| Backups | Daily `mysqldump --single-transaction` (task as SYSTEM, runs late if the PC was off), integrity check, zip + SHA256, 30-day retention, copy to USB/OneDrive |
+| Backups | Daily `mysqldump --single-transaction` (task as SYSTEM, runs late if the PC was off), integrity check, zip + SHA256, 30-day retention, copy to the owner's Google Drive (desktop client in *Mirror files* mode: *Stream files* mounts a per-user drive SYSTEM cannot see); the installer tests the copy through the real scheduled task |
 | Updates | `update.ps1`: backup, swap `app` / `app.previous`, health check, automatic rollback |
 | Windows | No sleep/hibernate on AC power, Windows Update active hours set to the opening hours |
 

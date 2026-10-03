@@ -174,6 +174,28 @@ function Get-MySqlServiceInfo([string]$ServiceName) {
     }
 }
 
+# Google Drive for desktop in "Mirror files" mode keeps a real folder in the user's profile:
+# C:\Users\<user>\My Drive (Spanish Windows: "Mi unidad"). In "Stream files" mode it only mounts
+# a virtual drive (G:) inside that user's session, which the SYSTEM account running the backup
+# task cannot see, so only mirror folders are valid backup destinations.
+function Find-GoogleDriveMirrorFolder([string]$UsersRoot = 'C:\Users') {
+    $found = foreach ($profileDir in @(Get-ChildItem -LiteralPath $UsersRoot -Directory -ErrorAction SilentlyContinue)) {
+        foreach ($name in @('My Drive', 'Mi unidad')) {
+            $candidate = Join-Path $profileDir.FullName $name
+            if (Test-Path -LiteralPath $candidate -PathType Container) { $candidate }
+        }
+    }
+    return @($found)
+}
+
+# True when the path is on a Google Drive "Stream files" virtual drive
+function Test-GoogleDriveStreamPath([string]$Path) {
+    if (-not $script:OnWindows) { return $false }
+    if ([IO.Path]::GetPathRoot($Path) -notmatch '^([A-Za-z]):\\$') { return $false }
+    $volume = Get-Volume -DriveLetter $Matches[1] -ErrorAction SilentlyContinue
+    return [bool]($volume -and $volume.FileSystemLabel -like 'Google Drive*')
+}
+
 function Get-LanAddresses {
     Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
         Where-Object { $_.IPAddress -notmatch '^(127\.|169\.254\.)' -and $_.PrefixOrigin -ne 'WellKnown' } |
