@@ -17,12 +17,12 @@ class SettingsStore {
   static const _buildDefault = String.fromEnvironment('API_URL');
 
   String get serverUrl {
+    // Web build served by the backend itself: the API is always the page's own origin, even if
+    // the PC's IP changed since the last visit (so a saved address is ignored)
+    if (kIsWeb && _buildDefault.isEmpty && Uri.base.hasAuthority) return Uri.base.origin;
     final saved = _prefs.getString(_serverUrlKey);
     if (saved != null && saved.isNotEmpty) return saved;
-    if (_buildDefault.isNotEmpty) return _buildDefault;
-    // Web build served from the restaurant PC: same host, API on port 3000
-    if (kIsWeb && Uri.base.host.isNotEmpty) return '${Uri.base.scheme}://${Uri.base.host}:3000';
-    return '';
+    return _buildDefault;
   }
 
   Future<void> setServerUrl(String url) => _prefs.setString(_serverUrlKey, normalizeServerUrl(url));

@@ -22,3 +22,7 @@ Thumbs.db
 # Backups
 *.sql.gz
 backups/
+
+# Flutter web build copied into the backend for local runs
+backend/public/
+release/

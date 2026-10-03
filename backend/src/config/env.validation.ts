@@ -22,5 +22,10 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
     throw new Error('BUSINESS_UTC_OFFSET_MINUTES must be an integer between -720 and 840');
   }
 
+  const port = Number(config.PORT ?? 3000);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('PORT must be an integer between 1 and 65535');
+  }
+
   return config;
 }

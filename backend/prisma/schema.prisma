@@ -3,7 +3,9 @@
 // Use Prisma ONLY as a client: `npx prisma generate`. Do NOT run `prisma migrate`.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // "windows": the release package can be built on Linux/macOS and still run on the restaurant PC
+  binaryTargets = ["native", "windows"]
 }
 
 datasource db {

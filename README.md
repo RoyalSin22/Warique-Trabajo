@@ -8,8 +8,11 @@ Runs on a local Windows server inside the restaurant's network.
 ```
 warique-orders/
 ├── database/
-│   ├── schema.sql        # Source of truth (MySQL 8.0.16+)
-│   └── app-user.sql      # Least-privilege DB user (no DELETE, no DDL)
+│   ├── schema.sql        # Source of truth (MySQL 8.4 LTS; 8.0.16+ works)
+│   ├── app-user.sql      # Least-privilege DB user (no DELETE, no DDL)
+│   └── backup-user.sql   # Read-only user for mysqldump
+├── deploy/windows/       # Release build, install, update, backup, restore, status (PowerShell 5.1+)
+│   └── GUIA-INSTALACION.md   # Installation and operations runbook (Spanish)
 ├── backend/              # NestJS 11 + Prisma 6 (client only) + Socket.IO
 │   └── src/
 │       ├── auth/         # JWT login, guards, own password change
@@ -19,6 +22,8 @@ warique-orders/
 │       ├── orders/       # Orders, status machine, payments
 │       ├── reports/      # Daily cash closing
 │       ├── realtime/     # Socket.IO gateway
+│       ├── health/       # GET /api/health (database + MySQL time zone check)
+│       ├── cli/          # create-owner: first OWNER account from a production build
 │       └── common/       # Filters, DTO helpers, money and date utils
 └── app/                  # Flutter 3.44+ (Android + web), Riverpod 3, Socket.IO client
     └── lib/
@@ -31,7 +36,9 @@ warique-orders/
 
 ## Backend setup (Windows)
 
-Requirements: Node.js 22 LTS, MySQL 8.0.16+.
+Requirements: Node.js 22 LTS, MySQL 8.4 LTS (8.0 reached end of life in April 2026).
+For the restaurant PC use the scripted install in [Deployment](#deployment-windows); the steps below
+are for a development machine.
 
 1. In `my.ini` (usually `C:\ProgramData\MySQL\MySQL Server 8.x\my.ini`), under `[mysqld]`, add
    `default-time-zone='+00:00'` and restart the MySQL service. Prisma reads `DATETIME` as UTC,
@@ -57,6 +64,7 @@ Requirements: Node.js 22 LTS, MySQL 8.0.16+.
 
 | Method | Path | Roles |
 |---|---|---|
+| GET | `/health` | public (no business data) |
 | POST | `/auth/login` | public |
 | GET | `/auth/me` | all |
 | PATCH | `/auth/password` | all (own password) |
@@ -103,12 +111,56 @@ flutter build apk --release --dart-define=API_URL=http://192.168.1.50:3000
 
 - **Server address**: entered on the login screen and saved on the device. The web build
   defaults to `http://<same host>:3000`; `--dart-define=API_URL=...` sets the default at build time.
-- **CORS**: add the origin that serves the web build to `CORS_ORIGINS` in `backend/.env`
-  (e.g. `http://192.168.1.50:8080`).
+- **Web build in production**: the backend serves it from `backend/public` (or `WEB_DIR`) on the
+  same port as the API, so no CORS setup is needed. `CORS_ORIGINS` is only for `flutter run`.
 - **Android**: the API is plain HTTP on the local network, so the manifest enables
   `usesCleartextTraffic`. Keep staff devices on a Wi-Fi network separate from the customers' one.
 - **Realtime**: the green/red dot in the app bar shows the Socket.IO link. After every reconnection
   the app reloads the orders and the menu, so events missed while offline are recovered.
+
+### Android APK
+
+Without a release key the APK is signed with the machine's debug key, and Android refuses to update
+an app signed with a different key. Create one key per project and keep it (and its passwords)
+outside the repository:
+
+```powershell
+keytool -genkey -v -keystore C:\keys\warique.jks -keyalg RSA -keysize 2048 -validity 10000 -alias warique
+```
+
+Then `app/android/key.properties` (git-ignored):
+
+```properties
+storeFile=C:/keys/warique.jks
+storePassword=...
+keyAlias=warique
+keyPassword=...
+```
+
+## Deployment (Windows)
+
+One Windows PC in the restaurant runs MySQL and the `Warique` service; phones and tablets use the
+app over the local Wi-Fi at `http://<pc-ip>:3000`. Full runbook (Spanish):
+[deploy/windows/GUIA-INSTALACION.md](deploy/windows/GUIA-INSTALACION.md).
+
+```powershell
+# Development machine: tests, builds and packages everything into release\warique-<version>.zip
+powershell -ExecutionPolicy Bypass -File deploy\windows\build-release.ps1 -WithApk
+
+# Restaurant PC (as administrator, inside the extracted package)
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -BackupCopyDir 'D:\Respaldos'
+```
+
+| Concern | Decision |
+|---|---|
+| Service manager | [WinSW 2.12](https://github.com/winsw/winsw) (MIT), SHA256 pinned in `build-release.ps1`; restart on failure, size-rotated logs, depends on the MySQL service |
+| Service account | `NT AUTHORITY\LocalService`: reads the app and `.env`, writes only `logs\` |
+| Secrets | `config\.env` and MySQL option files, ACL Administrators + SYSTEM (+ service read on `.env`); MySQL passwords are random and never typed on a command line |
+| Network | One port (app + API + Socket.IO), firewall rule for Private networks only; MySQL bound to `127.0.0.1` |
+| Offline package | Production `node_modules` and the Prisma Windows engine are bundled: no internet or build tools needed on the PC |
+| Backups | Daily `mysqldump --single-transaction` (task as SYSTEM, runs late if the PC was off), integrity check, zip + SHA256, 30-day retention, copy to USB/OneDrive |
+| Updates | `update.ps1`: backup, swap `app` / `app.previous`, health check, automatic rollback |
+| Windows | No sleep/hibernate on AC power, Windows Update active hours set to the opening hours |
 
 ## Conventions
 
