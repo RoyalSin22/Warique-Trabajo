@@ -9,6 +9,7 @@ Runs on a local Windows server inside the restaurant's network.
 warique-orders/
 ├── database/
 │   ├── schema.sql        # Source of truth (MySQL 8.4 LTS; 8.0.16+ works)
+│   ├── migrations/       # NNN_name.sql: later schema changes, applied by install/update
 │   ├── app-user.sql      # Least-privilege DB user (no DELETE, no DDL)
 │   └── backup-user.sql   # Read-only user for mysqldump
 ├── deploy/windows/       # Release build, install, update, backup, restore, status (PowerShell 5.1+)
@@ -20,18 +21,21 @@ warique-orders/
 │       ├── menu/         # Categories and dishes, sold-out toggle
 │       ├── tables/       # Dining tables
 │       ├── orders/       # Orders, status machine, payments
-│       ├── reports/      # Daily cash closing
+│       ├── reports/      # Daily cash closing and the sales/expenses dashboard
+│       ├── supplies/     # Supplies with stock: counts, waste, use (every change is a movement)
+│       ├── expenses/     # Expenses; a supply purchase adds stock in the same transaction
+│       ├── cash/         # Daily cash count (arqueo): change fund, expected vs counted
 │       ├── realtime/     # Socket.IO gateway
 │       ├── health/       # GET /api/health (database + MySQL time zone check)
 │       ├── cli/          # create-owner: first OWNER account from a production build
-│       └── common/       # Filters, DTO helpers, money and date utils
+│       └── common/       # Filters, DTO helpers, money/quantity and date utils
 └── app/                  # Flutter 3.44+ (Android + web), Riverpod 3, Socket.IO client
     └── lib/
-        ├── core/         # HTTP client, error translation, Money (integer cents)
+        ├── core/         # HTTP client, error translation, Money (cents), Quantity (thousandths)
         ├── models/       # Order, Dish, User + client copy of the status machine
         ├── data/         # Repositories, Socket.IO client, saved server/token
         ├── state/        # Riverpod providers: session, today's orders, menu
-        └── ui/           # login, waiter/, kitchen/, widgets/
+        └── ui/           # login, waiter/, kitchen/, owner/, inventory/, widgets/
 ```
 
 ## Backend setup (Windows)
@@ -83,8 +87,29 @@ are for a development machine.
 | GET | `/reports/payments?date=YYYY-MM-DD` | OWNER (reconciliation list) |
 | GET | `/reports/summary?from=YYYY-MM-DD&to=YYYY-MM-DD` | OWNER (dashboard, up to 366 days) |
 | GET | `/reports/backup-status` | OWNER (reads `BACKUP_STATUS_FILE`) |
+| GET | `/supplies`, `/supplies/:id/movements` | OWNER, KITCHEN |
+| POST / PATCH | `/supplies`, `/supplies/:id` | OWNER |
+| POST | `/supplies/:id/movements` (`COUNT` absolute, `WASTE` / `USE` subtract) | OWNER, KITCHEN (accepts `Idempotency-Key`) |
+| GET | `/expenses?date=YYYY-MM-DD`, `/expenses/:id` | OWNER |
+| POST | `/expenses` (optional `items`: supply purchase) | OWNER (accepts `Idempotency-Key`) |
+| PATCH | `/expenses/:id/void` (with `reason`) | OWNER |
+| GET | `/cash?date=YYYY-MM-DD` | OWNER |
+| POST | `/cash/open` (`openingAmount`), `/cash/close` (`countedAmount`, `notes`) | OWNER |
 
-Money values are returned as strings (`"18.50"`) to avoid floating-point rounding.
+Money values are returned as strings (`"18.50"`) to avoid floating-point rounding; stock
+quantities likewise (`"2.500"`, three decimals), computed in integer thousandths.
+
+**Supplies, expenses and cash count.**
+
+| Rule | Why |
+|---|---|
+| Stock only changes through a movement row (`PURCHASE`, `COUNT`, `WASTE`, `USE`, `VOID`) that stores the resulting stock | The history explains every number on screen |
+| Stock never goes below zero; a `COUNT` sets the real amount | The system follows the kitchen, not the other way round |
+| Selling a dish does **not** deduct supplies (no recipes) | Counts and waste are registered by hand; recipes can come later |
+| A purchase (expense with `items`) is always `INSUMOS`, its amount is the sum of the lines, and its stock goes in within the same transaction (rows locked in id order: no deadlocks) | Expense and stock always agree |
+| Expenses are voided with a reason, never deleted; voiding a purchase takes its stock back out (refused if part of it was already used: count first) | Audit trail |
+| Expected cash = change fund + cash payments of the day − expenses paid `CASH` that day; closing snapshots expected, counted and the difference (negative = missing); closing again is a recount | The drawer is reconciled every day |
+| "Ventas − gastos" is a cash view, not accounting profit | A purchase counts fully on the day it is paid |
 
 **Retries never duplicate orders or payments.** The app sends an `Idempotency-Key` (UUID) with every
 new order and payment and reuses it when the waiter retries after a network error; the server runs
@@ -95,7 +120,7 @@ API process); a failed request is not remembered, so it can be retried with the 
 ## Realtime (Socket.IO)
 
 Connect with `io('http://<server-ip>:3000', { auth: { token } })`.
-Events: `order.created`, `order.updated`, `dish.updated`, `dishes.reset`.
+Events: `order.created`, `order.updated`, `dish.updated`, `dishes.reset`, `supply.updated`.
 
 ## App (Flutter)
 
@@ -104,8 +129,8 @@ Requirements: Flutter 3.44+ (tested with 3.47.6 / Dart 3.13). Screens in this it
 | Role | Screens |
 |---|---|
 | WAITER | Today's orders (ready / to collect / in kitchen), new order (or "another order for this table" from an order's detail) (table or takeaway, sold-out dishes blocked live), order detail, deliver, cancel, payment (cash with change, Yape/Plin with operation number) |
-| KITCHEN | Live board (pending / in preparation, FIFO, late orders in red, alert on cancellations), sold-out switches |
-| OWNER | Waiter and kitchen screens, plus **Cierre** (daily closing: collections per method, top dishes, every payment with its Yape/Plin operation number, backup health; **Estadísticas**: sales per day, weekday averages, top dishes by quantity or revenue, orders per hour and payment split for 7/30/90 days or this month, each chart with a table view) and **Gestión** (menu with categories, prices and sold-out switches; tables; staff accounts and password resets; QR codes to connect staff phones) |
+| KITCHEN | Live board (pending / in preparation, FIFO, late orders in red, alert on cancellations), sold-out switches, **Insumos** (stock with "por comprar" list, counts, waste, use, history) |
+| OWNER | Waiter and kitchen screens, plus **Cierre** (daily closing: sales, collections, expenses and sales − expenses, **cash count** with the difference shown as "Cuadra" / "Faltan" / "Sobran", collections per method, top dishes, every payment with its Yape/Plin operation number, backup health; **Estadísticas**: sales per day, weekday averages, top dishes by quantity or revenue, orders per hour, payment split and expenses by category for 7/30/90 days or this month, each chart with a table view) and **Gestión** (**expenses** with optional supply lines, voiding with a reason; **supplies** with minimum stock alerts; menu with categories, prices and sold-out switches; tables; staff accounts and password resets; QR codes to connect staff phones) |
 | All | Change own password from the account menu |
 
 ```powershell
@@ -172,7 +197,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -GoogleDrive
 | Network | One port (app + API + Socket.IO), firewall rule for Private networks only; MySQL bound to `127.0.0.1` |
 | Offline package | Production `node_modules` and the Prisma Windows engine are bundled: no internet or build tools needed on the PC |
 | Backups | Daily `mysqldump --single-transaction` (task as SYSTEM, runs late if the PC was off), integrity check, zip + SHA256, 30-day retention, copy to the owner's Google Drive (desktop client in *Mirror files* mode: *Stream files* mounts a per-user drive SYSTEM cannot see); the installer tests the copy through the real scheduled task |
-| Updates | `update.ps1`: backup, swap `app` / `app.previous`, health check, automatic rollback |
+| Updates | `update.ps1`: backup, pending schema migrations, swap `app` / `app.previous`, health check, automatic rollback |
+| Schema changes | `database/migrations/NNN_*.sql`, idempotent and additive only (the previous version keeps working if an update rolls back); recorded in `schema_migrations`. Pending ones are detected with the read-only backup account, so the MySQL root password is asked only when there is something to apply (or taken from `WARIQUE_MYSQL_ADMIN_PASSWORD`) |
 | Windows | No sleep/hibernate on AC power, Windows Update active hours set to the opening hours |
 
 ## Conventions

@@ -1,4 +1,4 @@
-import { PaymentMethod } from '@prisma/client';
+import { ExpenseCategory, PaymentMethod } from '@prisma/client';
 import { buildSummary, dayRange } from './summary';
 
 // Peru = UTC-5. 2026-10-03 is a Saturday.
@@ -27,6 +27,11 @@ describe('buildSummary', () => {
       { method: PaymentMethod.CASH, count: 2, amountCents: 5000 },
       { method: PaymentMethod.YAPE, count: 1, amountCents: 4050 },
     ],
+    expenses: [
+      { date: '2026-10-03', category: ExpenseCategory.INSUMOS, amountCents: 2500 },
+      { date: '2026-10-03', category: ExpenseCategory.GAS, amountCents: 1000 },
+      { date: '2026-09-28', category: ExpenseCategory.INSUMOS, amountCents: 1500 },
+    ],
   });
 
   it('assigns orders to the local business day and zero-fills the rest', () => {
@@ -45,7 +50,17 @@ describe('buildSummary', () => {
       collected: '90.50',
       daysWithSales: 3,
       bestDay: { date: '2026-10-03', sales: '60.00' },
+      expenses: '50.00',
+      salesMinusExpenses: '50.00',
     });
+  });
+
+  it('adds expenses to their day and ranks categories by amount', () => {
+    expect(summary.days.find((d) => d.date === '2026-10-03')).toMatchObject({ expenses: '35.00' });
+    expect(summary.expensesByCategory).toEqual([
+      { category: ExpenseCategory.INSUMOS, amount: '40.00' },
+      { category: ExpenseCategory.GAS, amount: '10.00' },
+    ]);
   });
 
   it('averages weekdays over open days only', () => {
@@ -64,7 +79,7 @@ describe('buildSummary', () => {
   });
 
   it('returns no best day when nothing was sold', () => {
-    const empty = buildSummary({ days: ['2026-10-01'], utcOffsetMinutes: -300, orders: [], dishes: [], payments: [] });
+    const empty = buildSummary({ days: ['2026-10-01'], utcOffsetMinutes: -300, orders: [], dishes: [], payments: [], expenses: [] });
     expect(empty.totals).toMatchObject({ sales: '0.00', orders: 0, averageTicket: '0.00', bestDay: null });
   });
 });

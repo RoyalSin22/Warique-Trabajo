@@ -110,11 +110,12 @@ function New-MySqlOptionFile([string]$Path, [string]$User, [string]$Password, [i
     Set-RestrictedAcl $Path
 }
 
-function Invoke-MySqlFile([string]$MySqlBinDir, [string]$OptionFile, [string]$SqlFile) {
+function Invoke-MySqlFile([string]$MySqlBinDir, [string]$OptionFile, [string]$SqlFile, [string]$Database = '') {
     # "source" lets mysql read the file itself: no shell redirection, no re-encoding
     $sourcePath = (Resolve-Path -LiteralPath $SqlFile).Path.Replace('\', '/')
-    $result = Invoke-Native (Get-ExePath $MySqlBinDir 'mysql') @(
-        "--defaults-extra-file=$OptionFile", '--default-character-set=utf8mb4', "--execute=source $sourcePath")
+    $arguments = @("--defaults-extra-file=$OptionFile", '--default-character-set=utf8mb4')
+    if ($Database) { $arguments += "--database=$Database" }
+    $result = Invoke-Native (Get-ExePath $MySqlBinDir 'mysql') ($arguments + "--execute=source $sourcePath")
     if ($result.ExitCode -ne 0) { throw "mysql fallo ($SqlFile): $($result.StdErr.Trim())" }
 }
 
@@ -123,6 +124,34 @@ function Invoke-MySqlQuery([string]$MySqlBinDir, [string]$OptionFile, [string]$Q
         "--defaults-extra-file=$OptionFile", '--default-character-set=utf8mb4', '--batch', '--skip-column-names', "--execute=$Query")
     if ($result.ExitCode -ne 0) { throw "mysql fallo: $($result.StdErr.Trim())" }
     return $result.StdOut.Trim()
+}
+
+# Schema changes after the first release live in database\migrations\NNN_name.sql and are recorded
+# in schema_migrations. Any account that can read the database can tell what is pending (the
+# backup user during an update), so the MySQL root password is only asked for when there is work.
+function Get-PendingMigrations([string]$MySqlBinDir, [string]$OptionFile, [string]$Database, [string]$MigrationsDir) {
+    if (-not (Test-Path -LiteralPath $MigrationsDir)) { return @() }
+    $files = @(Get-ChildItem -LiteralPath $MigrationsDir -Filter '*.sql' -File | Sort-Object Name)
+    $hasTable = Invoke-MySqlQuery $MySqlBinDir $OptionFile ("SELECT COUNT(*) FROM information_schema.tables " +
+        "WHERE table_schema = '$Database' AND table_name = 'schema_migrations'")
+    $applied = @()
+    if ($hasTable -ne '0') {
+        $applied = @((Invoke-MySqlQuery $MySqlBinDir $OptionFile "SELECT version FROM ``$Database``.schema_migrations") -split "`r?`n" |
+                Where-Object { $_ })
+    }
+    return @($files | Where-Object { $applied -notcontains $_.BaseName })
+}
+
+# Each migration is idempotent (CREATE TABLE IF NOT EXISTS...), so a crash between applying a file
+# and recording it is fixed by running again. Needs an account with DDL rights (root).
+function Invoke-Migrations([string]$MySqlBinDir, [string]$AdminOptionFile, [string]$Database, [object[]]$Files) {
+    Invoke-MySqlQuery $MySqlBinDir $AdminOptionFile ("CREATE TABLE IF NOT EXISTS ``$Database``.schema_migrations (" +
+        'version VARCHAR(100) NOT NULL PRIMARY KEY, applied_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE = InnoDB') | Out-Null
+    foreach ($file in $Files) {
+        Invoke-MySqlFile $MySqlBinDir $AdminOptionFile $file.FullName $Database
+        Invoke-MySqlQuery $MySqlBinDir $AdminOptionFile "INSERT IGNORE INTO ``$Database``.schema_migrations (version) VALUES ('$($file.BaseName)')" | Out-Null
+        Write-Ok "Migracion $($file.BaseName) aplicada"
+    }
 }
 
 # Adds or replaces KEY=value in a .env file, keeping every other line

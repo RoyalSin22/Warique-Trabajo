@@ -9,7 +9,12 @@ import 'package:warique_app/ui/owner/stats_view.dart';
 import '../../support/container.dart';
 import '../../support/fixtures.dart';
 
-Map<String, dynamic> summaryJson({String from = '2026-09-04', String to = '2026-10-03', int orders = 6}) {
+Map<String, dynamic> summaryJson({
+  String from = '2026-09-04',
+  String to = '2026-10-03',
+  int orders = 6,
+  bool withExpenses = false,
+}) {
   final days = <Map<String, dynamic>>[];
   for (
     var d = DateTime.utc(2026, 9, 4);
@@ -34,7 +39,13 @@ Map<String, dynamic> summaryJson({String from = '2026-09-04', String to = '2026-
       'collected': '83.00',
       'daysWithSales': 2,
       'bestDay': {'date': '2026-10-03', 'sales': '292.00'},
+      'expenses': withExpenses ? '150.00' : '0.00',
+      'salesMinusExpenses': withExpenses ? '262.50' : '412.50',
     },
+    'expensesByCategory': [
+      if (withExpenses) {'category': 'INSUMOS', 'amount': '120.00'},
+      if (withExpenses) {'category': 'GAS', 'amount': '30.00'},
+    ],
     'days': days,
     'byWeekday': [
       for (var w = 1; w <= 7; w++)
@@ -143,6 +154,25 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(Table), findsOneWidget);
     expect(find.text('sáb 3 oct'), findsNWidgets(2)); // daily table row + best-day tile
+  });
+
+  testWidgets('expenses add two tiles and a ranked chart with its takeaway', (tester) async {
+    server = RecordingHttp((request) => (200, summaryJson(withExpenses: true)));
+    await pump(tester, size: const Size(400, 3200));
+    expect(find.text('Ventas − gastos'), findsOneWidget);
+    expect(find.text('S/ 262.50'), findsOneWidget);
+    expect(find.text('Gastos por categoría'), findsOneWidget);
+    expect(
+      find.text('Insumos es el mayor gasto: S/ 120.00, 80 % del total (36 % de lo vendido).'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('no expenses: no expense tiles or chart', (tester) async {
+    server = RecordingHttp((request) => (200, summaryJson()));
+    await pump(tester, size: const Size(400, 3200));
+    expect(find.text('Ventas − gastos'), findsNothing);
+    expect(find.text('Gastos por categoría'), findsNothing);
   });
 
   testWidgets('empty period shows a friendly message', (tester) async {

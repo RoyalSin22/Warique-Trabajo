@@ -2,6 +2,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OrderStatus } from '@prisma/client';
+import { fromDateColumn, toDateColumn } from '../common/utils/date-column';
 import { businessDayRange } from '../common/utils/business-day';
 import { fromCents, toCents } from '../common/utils/money';
 import { PrismaService } from '../prisma/prisma.service';
@@ -31,8 +32,8 @@ export class ReportsService {
     const createdThatDay = { createdAt: { gte: start, lt: end } };
     const validOrdersThatDay = { ...createdThatDay, status: { not: OrderStatus.CANCELLED } };
 
-    // Four aggregate queries in parallel; the database does the summing
-    const [ordersByStatus, paymentsByMethod, topDishes, paidOnDayOrders] = await Promise.all([
+    // Aggregate queries in parallel; the database does the summing
+    const [ordersByStatus, paymentsByMethod, topDishes, paidOnDayOrders, expenses] = await Promise.all([
       this.prisma.order.groupBy({
         by: ['status'],
         where: createdThatDay,
@@ -56,12 +57,18 @@ export class ReportsService {
         where: { order: validOrdersThatDay },
         _sum: { amount: true },
       }),
+      this.prisma.expense.groupBy({
+        by: ['category'],
+        where: { businessDate: toDateColumn(day), isVoid: false },
+        _sum: { amount: true },
+      }),
     ]);
 
     const salesCents = ordersByStatus
       .filter((row) => row.status !== OrderStatus.CANCELLED)
       .reduce((sum, row) => sum + toCents(row._sum.total), 0);
     const collectedCents = paymentsByMethod.reduce((sum, row) => sum + toCents(row._sum.amount), 0);
+    const expensesCents = expenses.reduce((sum, row) => sum + toCents(row._sum.amount), 0);
 
     return {
       date: day,
@@ -83,6 +90,11 @@ export class ReportsService {
         dishName: row.dishName,
         quantity: row._sum.quantity ?? 0,
       })),
+      expensesTotal: fromCents(expensesCents),
+      salesMinusExpenses: fromCents(salesCents - expensesCents),
+      expensesByCategory: expenses
+        .map((row) => ({ category: row.category, amount: fromCents(toCents(row._sum.amount)) }))
+        .sort((a, b) => toCents(b.amount) - toCents(a.amount)),
     };
   }
 
@@ -134,7 +146,7 @@ export class ReportsService {
 
     // A year of a small restaurant is a few tens of thousands of rows with two columns:
     // aggregating in the API keeps the time-zone logic in one tested place (no SQL date math)
-    const [orders, dishes, payments] = await Promise.all([
+    const [orders, dishes, payments, expenses] = await Promise.all([
       this.prisma.order.findMany({ where: validOrders, select: { createdAt: true, total: true } }),
       this.prisma.orderItem.groupBy({
         by: ['dishId', 'dishName'],
@@ -147,6 +159,11 @@ export class ReportsService {
         by: ['method'],
         where: inRange,
         _count: { _all: true },
+        _sum: { amount: true },
+      }),
+      this.prisma.expense.groupBy({
+        by: ['businessDate', 'category'],
+        where: { businessDate: { gte: toDateColumn(from), lte: toDateColumn(to) }, isVoid: false },
         _sum: { amount: true },
       }),
     ]);
@@ -163,6 +180,11 @@ export class ReportsService {
       payments: payments.map((row) => ({
         method: row.method,
         count: row._count._all,
+        amountCents: toCents(row._sum.amount),
+      })),
+      expenses: expenses.map((row) => ({
+        date: fromDateColumn(row.businessDate),
+        category: row.category,
         amountCents: toCents(row._sum.amount),
       })),
     });

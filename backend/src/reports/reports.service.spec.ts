@@ -9,6 +9,7 @@ describe('ReportsService.daily', () => {
     order: { groupBy: jest.fn() },
     payment: { groupBy: jest.fn(), aggregate: jest.fn() },
     orderItem: { groupBy: jest.fn() },
+    expense: { groupBy: jest.fn() },
   };
   const service = new ReportsService(
     prisma as unknown as PrismaService,
@@ -29,6 +30,10 @@ describe('ReportsService.daily', () => {
     prisma.orderItem.groupBy.mockResolvedValue([
       { dishId: 1, dishName: 'Ceviche', _sum: { quantity: 5 } },
     ]);
+    prisma.expense.groupBy.mockResolvedValue([
+      { category: 'GAS', _sum: { amount: '12.00' } },
+      { category: 'INSUMOS', _sum: { amount: '30.50' } },
+    ]);
 
     const report = await service.daily('2026-10-02');
 
@@ -36,6 +41,13 @@ describe('ReportsService.daily', () => {
     expect(report.collectedTotal).toBe('90.50');
     expect(report.pendingBalance).toBe('20.00');
     expect(report.topDishes).toEqual([{ dishId: 1, dishName: 'Ceviche', quantity: 5 }]);
+    expect(report.expensesTotal).toBe('42.50');
+    expect(report.salesMinusExpenses).toBe('68.00');
+    expect(report.expensesByCategory[0]).toEqual({ category: 'INSUMOS', amount: '30.50' });
+    expect(prisma.expense.groupBy.mock.calls[0][0].where).toEqual({
+      businessDate: new Date('2026-10-02T00:00:00.000Z'),
+      isVoid: false,
+    });
   });
 });
 
@@ -75,6 +87,7 @@ describe('ReportsService.summary', () => {
     order: { findMany: jest.fn().mockResolvedValue([]) },
     orderItem: { groupBy: jest.fn().mockResolvedValue([]) },
     payment: { groupBy: jest.fn().mockResolvedValue([]) },
+    expense: { groupBy: jest.fn().mockResolvedValue([]) },
   };
   const service = new ReportsService(
     prisma as unknown as PrismaService,

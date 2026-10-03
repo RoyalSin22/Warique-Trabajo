@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../inventory/supplies_page.dart';
 import '../widgets/common.dart';
 import 'connect_devices_page.dart';
+import 'expenses_page.dart';
 import 'menu_admin_page.dart';
 import 'tables_admin_page.dart';
 import 'users_admin_page.dart';
@@ -23,6 +25,20 @@ class AdminPage extends ConsumerWidget {
             subtitle: const Text('Categorías, platos, precios y agotados'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => open(const MenuAdminPage()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.receipt_long),
+            title: const Text('Gastos'),
+            subtitle: const Text('Compras, gas, servicios, sueldos...'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => open(const ExpensesPage()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.inventory_2),
+            title: const Text('Insumos'),
+            subtitle: const Text('Stock, conteos, mermas y alertas de stock bajo'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => open(const SuppliesPage(canManage: true)),
           ),
           ListTile(
             leading: const Icon(Icons.table_restaurant),

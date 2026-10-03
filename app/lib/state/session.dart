@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_client.dart';
 import '../core/api_exception.dart';
 import '../data/admin_repository.dart';
+import '../data/inventory_repository.dart';
 import '../data/repositories.dart';
 import '../data/settings_store.dart';
 import '../models/user.dart';
@@ -86,3 +87,4 @@ final authRepositoryProvider = Provider((ref) => AuthRepository(ref.watch(apiCli
 final menuRepositoryProvider = Provider((ref) => MenuRepository(ref.watch(apiClientProvider)));
 final ordersRepositoryProvider = Provider((ref) => OrdersRepository(ref.watch(apiClientProvider)));
 final adminRepositoryProvider = Provider((ref) => AdminRepository(ref.watch(apiClientProvider)));
+final inventoryRepositoryProvider = Provider((ref) => InventoryRepository(ref.watch(apiClientProvider)));

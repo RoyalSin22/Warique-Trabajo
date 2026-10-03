@@ -10,8 +10,12 @@ import '../../data/realtime_client.dart';
 import '../../models/admin.dart';
 import '../../models/order.dart';
 import '../../state/admin.dart';
+import '../../state/inventory.dart';
 import '../../state/realtime.dart';
 import '../widgets/common.dart';
+import '../widgets/day_navigator.dart';
+import 'cash_card.dart';
+import 'expenses_page.dart';
 import 'stats_view.dart';
 
 /// Daily closing: sales, collections per method, payments to reconcile and backup health.
@@ -54,19 +58,9 @@ class _ReportPageState extends ConsumerState<ReportPage> {
     ref.invalidate(dailyReportProvider(key));
     ref.invalidate(paymentsReportProvider(key));
     ref.invalidate(backupStatusProvider);
+    ref.invalidate(cashDayProvider(key));
+    ref.invalidate(expensesProvider(key));
     ref.invalidate(salesSummaryProvider); // every range of the Estadísticas tab
-  }
-
-  void _moveDay(int days) => setState(() => _day = _day.add(Duration(days: days)));
-
-  Future<void> _pickDay() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _day,
-      firstDate: DateTime(2024),
-      lastDate: dateOnly(DateTime.now()),
-    );
-    if (picked != null) setState(() => _day = dateOnly(picked));
   }
 
   @override
@@ -100,31 +94,20 @@ class _ReportPageState extends ConsumerState<ReportPage> {
                 // Readable column on tablets and the PC; full width on phones
                 padding: EdgeInsets.fromLTRB(12 + _sideGutter(context), 4, 12 + _sideGutter(context), 24),
                 children: [
-                  Row(
-                    children: [
-                      IconButton(
-                        onPressed: () => _moveDay(-1),
-                        icon: const Icon(Icons.chevron_left),
-                        tooltip: 'Día anterior',
-                      ),
-                      Expanded(
-                        child: TextButton.icon(
-                          onPressed: _pickDay,
-                          icon: const Icon(Icons.calendar_today, size: 18),
-                          label: Text(_isToday ? 'Hoy, ${longDayLabel(_day)}' : longDayLabel(_day)),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: _isToday ? null : () => _moveDay(1),
-                        icon: const Icon(Icons.chevron_right),
-                        tooltip: 'Día siguiente',
-                      ),
-                    ],
-                  ),
+                  DayNavigator(day: _day, onChanged: (day) => setState(() => _day = day)),
                   const _BackupCard(),
                   const SizedBox(height: 8),
                   switch (report) {
-                    AsyncValue(value: final data?) => _ReportBody(report: data),
+                    AsyncValue(value: final data?) => _ReportBody(
+                      report: data,
+                      cash: CashCard(date: key),
+                      onExpenses: () async {
+                        await Navigator.of(
+                          context,
+                        ).push(MaterialPageRoute(builder: (_) => ExpensesPage(initialDay: _day)));
+                        _refresh();
+                      },
+                    ),
                     AsyncError(:final error) => ErrorRetryView(error: error, onRetry: _refresh),
                     _ => const Padding(
                       padding: EdgeInsets.all(32),
@@ -199,9 +182,13 @@ class _BackupCard extends ConsumerWidget {
 }
 
 class _ReportBody extends StatelessWidget {
-  const _ReportBody({required this.report});
+  const _ReportBody({required this.report, required this.cash, required this.onExpenses});
 
   final DailyReport report;
+
+  /// Right below the headline numbers: closing the drawer is the next step of the day.
+  final Widget cash;
+  final VoidCallback onExpenses;
 
   @override
   Widget build(BuildContext context) {
@@ -223,6 +210,12 @@ class _ReportBody extends StatelessWidget {
             _Kpi(label: 'Ventas', value: report.sales, caption: '${report.orderCount} pedidos'),
             _Kpi(label: 'Cobrado', value: report.collectedTotal),
             _Kpi(label: 'Por cobrar', value: report.pendingBalance, warn: report.pendingBalance.isPositive),
+            _Kpi(label: 'Gastos', value: report.expensesTotal, onTap: onExpenses, caption: 'Ver / registrar'),
+            _Kpi(
+              label: 'Ventas − gastos',
+              value: report.salesMinusExpenses,
+              warn: report.salesMinusExpenses.cents < 0,
+            ),
           ],
         ),
         if (open > 0 || cancelled != null)
@@ -236,6 +229,7 @@ class _ReportBody extends StatelessWidget {
               style: theme.textTheme.bodySmall,
             ),
           ),
+        cash,
         const SizedBox(height: 16),
         Text('Cobrado por método', style: theme.textTheme.titleMedium),
         if (report.collectedByMethod.isEmpty) const Text('Sin cobros.'),
@@ -269,12 +263,13 @@ class _ReportBody extends StatelessWidget {
 }
 
 class _Kpi extends StatelessWidget {
-  const _Kpi({required this.label, required this.value, this.caption, this.warn = false});
+  const _Kpi({required this.label, required this.value, this.caption, this.warn = false, this.onTap});
 
   final String label;
   final Money value;
   final String? caption;
   final bool warn;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -283,19 +278,31 @@ class _Kpi extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 140),
       child: Card(
         margin: EdgeInsets.zero,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(label, style: theme.textTheme.labelLarge),
-              Text(
-                value.toString(),
-                style: theme.textTheme.headlineSmall?.copyWith(color: warn ? theme.colorScheme.error : null),
-              ),
-              if (caption != null) Text(caption!, style: theme.textTheme.bodySmall),
-            ],
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label, style: theme.textTheme.labelLarge),
+                Text(
+                  value.toString(),
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    color: warn ? theme.colorScheme.error : null,
+                  ),
+                ),
+                if (caption != null)
+                  Text(
+                    caption!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: onTap == null ? null : theme.colorScheme.primary,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

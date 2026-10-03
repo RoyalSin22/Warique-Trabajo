@@ -53,6 +53,19 @@ const _knownMessages = <String, String>{
   'Category does not exist or is inactive': 'La categoría no existe o está desactivada.',
   'Related record does not exist': 'El registro relacionado ya no existe.',
   'Record not found': 'El registro ya no existe.',
+  'The supply is inactive': 'El insumo está desactivado.',
+  'A purchase with supplies must use the INSUMOS category':
+      'Una compra con insumos debe ser del tipo Insumos.',
+  'Each supply can appear only once per purchase': 'Cada insumo puede ir una sola vez en la compra.',
+  'The purchase total must be greater than 0': 'El total de la compra debe ser mayor que 0.',
+  'An expense cannot be recorded for a future day': 'No se puede registrar un gasto en un día futuro.',
+  'The expense is already void': 'El gasto ya estaba anulado.',
+  'Expense not found': 'El gasto no existe.',
+  'Supply not found': 'El insumo no existe.',
+  'The cash count for this day is already closed':
+      'La caja de este día ya se cerró. Usa "Volver a contar" si hace falta.',
+  'Open the cash count with the change fund first': 'Primero abre la caja con el fondo de cambio.',
+  'The cash count cannot be for a future day': 'No se puede hacer el arqueo de un día futuro.',
 };
 
 String translateServerMessage(int statusCode, String? serverMessage) {
@@ -62,6 +75,19 @@ String translateServerMessage(int statusCode, String? serverMessage) {
     // "Amount exceeds the pending balance of S/ 12.00"
     final balance = RegExp(r'pending balance of (S/ [\d.]+)').firstMatch(serverMessage);
     if (balance != null) return 'El monto supera el saldo pendiente (${balance.group(1)}).';
+    // "Only 2.500 in stock; register a count if the real amount is different"
+    final stock = RegExp(r'^Only ([\d.]+) in stock').firstMatch(serverMessage);
+    if (stock != null) {
+      return 'Solo hay ${_trimQuantity(stock.group(1)!)} en stock. Si hay otra cantidad, registra un conteo.';
+    }
+    // "Cannot void: Limón has 2.000 left of the 5.500 bought; register a count first"
+    final voidStock = RegExp(
+      r'^Cannot void: (.+) has ([\d.]+) left of the ([\d.]+) bought',
+    ).firstMatch(serverMessage);
+    if (voidStock != null) {
+      return 'No se puede anular: de ${voidStock.group(1)} quedan ${_trimQuantity(voidStock.group(2)!)} '
+          'de los ${_trimQuantity(voidStock.group(3)!)} comprados. Registra un conteo primero.';
+    }
     if (serverMessage.startsWith('username must be')) {
       return 'Usuario inválido: 3 a 50 caracteres en minúsculas, números, ".", "_" o "-".';
     }
@@ -80,3 +106,6 @@ String translateServerMessage(int statusCode, String? serverMessage) {
     _ => 'Error del servidor ($statusCode). Intenta de nuevo.',
   };
 }
+
+/// "2.500" -> "2.5", "3.000" -> "3"
+String _trimQuantity(String value) => value.contains('.') ? value.replaceFirst(RegExp(r'\.?0+$'), '') : value;

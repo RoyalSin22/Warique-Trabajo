@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/dates.dart';
 import '../../core/money.dart';
 import '../../models/admin.dart';
+import '../../models/inventory.dart';
 import '../../models/order.dart';
 import '../../state/admin.dart';
 import '../widgets/common.dart';
@@ -135,6 +136,14 @@ class _Dashboard extends StatelessWidget {
                 value: s.bestDay!.sales.toString(),
                 caption: mediumDayLabel(s.bestDay!.date),
               ),
+            if (s.expenses.isPositive) ...[
+              StatTile(label: 'Gastos', value: s.expenses.toString()),
+              StatTile(
+                label: 'Ventas − gastos',
+                value: s.salesMinusExpenses.toString(),
+                caption: 'No es utilidad contable',
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 12),
@@ -200,6 +209,19 @@ class _Dashboard extends StatelessWidget {
             ],
           ),
         ),
+        if (s.expensesByCategory.isNotEmpty)
+          ChartCard(
+            title: 'Gastos por categoría',
+            takeaway: _expenseTakeaway(s),
+            chart: _ExpenseBars(rows: s.expensesByCategory),
+            table: (
+              headers: const ['Categoría', 'Monto', '% del gasto'],
+              rows: [
+                for (final row in s.expensesByCategory)
+                  [row.category.label, row.amount.toString(), '${_share(row.amount, s.expenses)} %'],
+              ],
+            ),
+          ),
         ChartCard(
           title: 'Cómo pagan',
           takeaway: s.byMethod.isEmpty ? null : 'Cobrado en el periodo: ${s.collected}.',
@@ -215,6 +237,14 @@ class _Dashboard extends StatelessWidget {
       ],
     );
   }
+}
+
+int _share(Money part, Money total) => total.isPositive ? (part.cents * 100 / total.cents).round() : 0;
+
+String _expenseTakeaway(SalesSummary s) {
+  final top = s.expensesByCategory.first;
+  final ofSales = s.sales.isPositive ? ' (${_share(s.expenses, s.sales)} % de lo vendido)' : '';
+  return '${top.category.label} es el mayor gasto: ${top.amount}, ${_share(top.amount, s.expenses)} % del total$ofSales.';
 }
 
 String _hourRange(int hour) =>
@@ -772,6 +802,64 @@ class _PaymentSplit extends StatelessWidget {
                 Text(
                   '${p.row.amount}  (${(p.row.amount.cents * 100 / total).round()} %)',
                   style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Ranked horizontal bars, one color: the question is "where does the money go", so length and
+/// the printed amount carry it (no legend needed).
+class _ExpenseBars extends StatelessWidget {
+  const _ExpenseBars({required this.rows});
+
+  final List<({ExpenseCategory category, Money amount})> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final max = rows.fold<int>(1, (m, r) => math.max(m, r.amount.cents));
+    return Column(
+      children: [
+        for (final row in rows)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 150,
+                  child: Text(
+                    row.category.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ),
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, c) => Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        height: 14,
+                        width: math.max(2, c.maxWidth * row.amount.cents / max),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary,
+                          borderRadius: const BorderRadius.horizontal(right: Radius.circular(4)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 100,
+                  child: Text(
+                    row.amount.toString(),
+                    textAlign: TextAlign.right,
+                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                  ),
                 ),
               ],
             ),

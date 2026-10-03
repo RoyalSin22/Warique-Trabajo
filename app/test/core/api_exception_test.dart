@@ -34,4 +34,19 @@ void main() {
     expect(ApiException.fromResponse(429, null).message, contains('Demasiados intentos'));
     expect(ApiException.fromResponse(500, {'message': 'Internal server error'}).message, contains('500'));
   });
+
+  test('translates stock conflicts with the numbers people use', () {
+    expect(
+      ApiException.fromResponse(409, {
+        'message': 'Only 2.500 in stock; register a count if the real amount is different',
+      }).message,
+      'Solo hay 2.5 en stock. Si hay otra cantidad, registra un conteo.',
+    );
+    expect(
+      ApiException.fromResponse(409, {
+        'message': 'Cannot void: Limón has 3.000 left of the 10.000 bought; register a count first',
+      }).message,
+      'No se puede anular: de Limón quedan 3 de los 10 comprados. Registra un conteo primero.',
+    );
+  });
 }

@@ -132,6 +132,19 @@ Check 'business flow: menu, table, waiter, order (idempotent), Yape payment, rep
     [decimal]$report.sales -eq 31 -and $payments.payments[0].operationNumber -eq 'OP-123456' -and $backup.ok -and $backup.copied -and -not $backup.needsAttention
 }
 Check 'accents survive the whole stack (UTF-8)' { (Api GET '/dishes' $null $auth)[0].name -eq 'Ají de gallina' }
+Check 'expenses, supplies and cash count (migration 001 applied by install.ps1)' {
+    $supply = Api POST '/supplies' @{ name = 'Limón'; unit = 'KG'; minStock = 1 } $auth
+    Api POST '/cash/open' @{ openingAmount = 50 } $auth | Out-Null
+    $purchase = @{ category = 'INSUMOS'; description = 'Mercado'; paidWith = 'CASH'; items = @(@{ supplyId = $supply.id; quantity = 2.5; cost = 20 }) }
+    $expense = Api POST '/expenses' $purchase ($auth + @{ 'Idempotency-Key' = 'ci-expense-0001' })
+    $retry = Api POST '/expenses' $purchase ($auth + @{ 'Idempotency-Key' = 'ci-expense-0001' })
+    if ($expense.id -ne $retry.id) { throw "retry created expense $($retry.id)" }
+    $after = Api POST "/supplies/$($supply.id)/movements" @{ type = 'WASTE'; quantity = 0.5 } $auth
+    $cash = Api POST '/cash/close' @{ countedAmount = 30 } $auth
+    $daily = Api GET '/reports/daily' $null $auth
+    Write-Host "      stock $($after.stock), expected $($cash.live.expected), difference $($cash.session.difference), expenses $($daily.expensesTotal)"
+    [decimal]$after.stock -eq 2 -and [decimal]$cash.live.expected -eq 30 -and [decimal]$cash.session.difference -eq 0 -and [decimal]$daily.expensesTotal -eq 20
+}
 Check 'status.ps1 reports everything in order' {
     & powershell -NoProfile -ExecutionPolicy Bypass -File "$InstallDir\scripts\status.ps1"
     $LASTEXITCODE -eq 0
@@ -170,9 +183,21 @@ Check 'safety backup before restore did not turn the owner card red' {
 }
 
 # ------------------------------------------------------------------ Updates
-Check 'update.ps1 installs a release and keeps app.previous' {
-    & powershell -NoProfile -ExecutionPolicy Bypass -File "$ReleaseDir\scripts\update.ps1"
-    $LASTEXITCODE -eq 0 -and (Test-Path "$InstallDir\app.previous\dist\main.js") -and (Health).status -eq 'ok'
+Check 'update.ps1 applies a pending migration, installs the release and keeps app.previous' {
+    # Same release plus one new migration, as a future version would ship it
+    $next = Join-Path $env:RUNNER_TEMP 'next-release'
+    if (Test-Path $next) { Remove-Item $next -Recurse -Force }
+    Copy-Item $ReleaseDir $next -Recurse
+    Set-Content -LiteralPath "$next\database\migrations\900_ci_check.sql" -Encoding ASCII `
+        -Value 'CREATE TABLE IF NOT EXISTS ci_migration_check (id INT PRIMARY KEY) ENGINE = InnoDB;'
+    & powershell -NoProfile -ExecutionPolicy Bypass -File "$next\scripts\update.ps1"
+    $updateExit = $LASTEXITCODE
+    $config = Get-Content "$InstallDir\config\deploy.json" -Raw | ConvertFrom-Json
+    $versions = & "$($config.mysqlBinDir)\mysql.exe" "--defaults-extra-file=$($config.backupOptionFile)" --batch --skip-column-names `
+        "--execute=SELECT version FROM $($config.database).schema_migrations ORDER BY version"
+    Write-Host "      update exit $updateExit, migrations: $($versions -join ', ')"
+    $updateExit -eq 0 -and ($versions -contains '001_expenses_supplies_cash') -and ($versions -contains '900_ci_check') -and
+        (Test-Path "$InstallDir\app.previous\dist\main.js") -and (Health).status -eq 'ok'
 }
 Check 'a broken release is rolled back automatically' {
     $broken = Join-Path $env:RUNNER_TEMP 'broken-release'

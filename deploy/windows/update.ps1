@@ -5,10 +5,11 @@
   Ejecutar como administrador desde el paquete NUEVO descomprimido:
     powershell -ExecutionPolicy Bypass -File .\scripts\update.ps1
   1. Respaldo de la base de datos (si falla, no actualiza).
-  2. Detiene el servicio, guarda la version actual en app.previous y copia la nueva.
-  3. Inicia y verifica /api/health. Si no responde, vuelve sola a la version anterior.
-  No modifica la base de datos: si una version trae cambios de esquema, vienen en
-  database\migrations con instrucciones aparte.
+  2. Aplica los cambios de esquema pendientes (database\migrations). Solo entonces pide la
+     clave de root de MySQL (o la toma de WARIQUE_MYSQL_ADMIN_PASSWORD). Los cambios solo
+     agregan tablas o columnas: la version anterior sigue funcionando si hay que volver.
+  3. Detiene el servicio, guarda la version actual en app.previous y copia la nueva.
+  4. Inicia y verifica /api/health. Si no responde, vuelve sola a la version anterior.
 #>
 [CmdletBinding()]
 param([string]$InstallDir = 'C:\Warique')
@@ -62,6 +63,24 @@ Write-Step "Actualizando Warique $($config.version) -> $newVersion"
 Write-Step 'Respaldo previo'
 & (Join-Path $PSScriptRoot 'backup.ps1') -InstallDir $InstallDir -Tag 'antes-de-actualizar'
 if ($LASTEXITCODE -eq 1) { throw 'El respaldo fallo; no se actualizara. Revisa logs\backup.log.' }
+
+Write-Step 'Esquema de la base de datos'
+$pending = @(Get-PendingMigrations $config.mysqlBinDir $config.backupOptionFile $config.database (Join-Path $ReleaseDir 'database\migrations'))
+if ($pending.Count -eq 0) {
+    Write-Ok 'Sin cambios pendientes'
+} else {
+    Write-Ok ("Pendientes: " + (($pending | ForEach-Object { $_.BaseName }) -join ', '))
+    $adminOptionFile = Join-Path $InstallDir ('config\admin-' + [Guid]::NewGuid().ToString('N') + '.cnf')
+    $rootPassword = $env:WARIQUE_MYSQL_ADMIN_PASSWORD
+    if (-not $rootPassword) { $rootPassword = Read-PlainSecret 'Clave del usuario root de MySQL (no se guarda)' }
+    try {
+        New-MySqlOptionFile $adminOptionFile 'root' $rootPassword ([int]$config.mysqlPort)
+        $rootPassword = $null
+        Invoke-Migrations $config.mysqlBinDir $adminOptionFile $config.database $pending
+    } finally {
+        Remove-Item -LiteralPath $adminOptionFile -Force -ErrorAction SilentlyContinue
+    }
+}
 
 # Settings introduced by newer versions (idempotent)
 Set-EnvFileValue (Join-Path $InstallDir 'config\.env') 'BACKUP_STATUS_FILE' (Join-Path $config.logDir 'ultimo-respaldo.json')

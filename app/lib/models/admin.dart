@@ -1,4 +1,5 @@
 import '../core/money.dart';
+import 'inventory.dart';
 import 'order.dart';
 import 'user.dart';
 
@@ -66,6 +67,9 @@ class DailyReport {
     required this.collectedTotal,
     required this.pendingBalance,
     required this.topDishes,
+    this.expensesTotal = Money.zero,
+    this.salesMinusExpenses = Money.zero,
+    this.expensesByCategory = const [],
   });
 
   factory DailyReport.fromJson(Map<String, dynamic> json) => DailyReport(
@@ -91,6 +95,9 @@ class DailyReport {
       for (final row in json['topDishes'] as List)
         (name: row['dishName'] as String, quantity: row['quantity'] as int),
     ],
+    expensesTotal: Money.tryParse(json['expensesTotal']) ?? Money.zero,
+    salesMinusExpenses: Money.tryParse(json['salesMinusExpenses']) ?? Money.zero,
+    expensesByCategory: _expensesByCategory(json['expensesByCategory']),
   );
 
   final String date;
@@ -104,6 +111,13 @@ class DailyReport {
   /// What the day's orders still owe.
   final Money pendingBalance;
   final List<({String name, int quantity})> topDishes;
+
+  /// Non-void expenses of the day.
+  final Money expensesTotal;
+
+  /// Cash view, not accounting profit: supplies bought today count fully today.
+  final Money salesMinusExpenses;
+  final List<({ExpenseCategory category, Money amount})> expensesByCategory;
 
   int get orderCount => ordersByStatus.entries
       .where((entry) => entry.key != OrderStatus.cancelled)
@@ -206,6 +220,9 @@ class SalesSummary {
     required this.byHour,
     required this.topDishes,
     required this.byMethod,
+    this.expenses = Money.zero,
+    this.salesMinusExpenses = Money.zero,
+    this.expensesByCategory = const [],
   });
 
   factory SalesSummary.fromJson(Map<String, dynamic> json) {
@@ -257,6 +274,9 @@ class SalesSummary {
             amount: Money.parse(row['amount']),
           ),
       },
+      expenses: Money.tryParse(totals['expenses']) ?? Money.zero,
+      salesMinusExpenses: Money.tryParse(totals['salesMinusExpenses']) ?? Money.zero,
+      expensesByCategory: _expensesByCategory(json['expensesByCategory']),
     );
   }
 
@@ -275,4 +295,15 @@ class SalesSummary {
   final List<({int hour, int orders, Money sales})> byHour;
   final List<({String name, int quantity, Money revenue})> topDishes;
   final Map<PaymentMethod, ({int count, Money amount})> byMethod;
+
+  /// Non-void expenses in the range, largest category first.
+  final Money expenses;
+  final Money salesMinusExpenses;
+  final List<({ExpenseCategory category, Money amount})> expensesByCategory;
 }
+
+/// Tolerates a server without expenses (older version): empty list.
+List<({ExpenseCategory category, Money amount})> _expensesByCategory(Object? rows) => [
+  for (final row in rows as List? ?? const [])
+    (category: ExpenseCategory.fromApi(row['category'] as String), amount: Money.parse(row['amount'])),
+];

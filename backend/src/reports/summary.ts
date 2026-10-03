@@ -1,4 +1,4 @@
-import { PaymentMethod } from '@prisma/client';
+import { ExpenseCategory, PaymentMethod } from '@prisma/client';
 import { fromCents, toCents } from '../common/utils/money';
 
 /** Inputs already aggregated or fetched by the service, kept free of Prisma for testing. */
@@ -10,6 +10,8 @@ export interface SummaryInput {
   orders: { createdAt: Date; total: { toString(): string } }[];
   dishes: { dishName: string; quantity: number; revenueCents: number }[];
   payments: { method: PaymentMethod; count: number; amountCents: number }[];
+  /** Non-void expenses grouped by business day and category */
+  expenses: { date: string; category: ExpenseCategory; amountCents: number }[];
 }
 
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7]; // ISO: Monday = 1
@@ -17,11 +19,17 @@ const WEEKDAYS = [1, 2, 3, 4, 5, 6, 7]; // ISO: Monday = 1
 /**
  * Builds the owner's dashboard: daily series (zero-filled), weekday averages over the days that
  * had sales (a closed day must not drag the average down), hourly load, top dishes and the
- * payment-method split. All money is computed in integer cents and returned as "0.00" strings.
+ * payment-method split, plus expenses by day and category. All money is computed in integer cents and returned as "0.00" strings.
  */
 export function buildSummary(input: SummaryInput) {
   const offsetMs = input.utcOffsetMinutes * 60_000;
-  const byDay = new Map(input.days.map((day) => [day, { salesCents: 0, orders: 0 }]));
+  const byDay = new Map(input.days.map((day) => [day, { salesCents: 0, orders: 0, expensesCents: 0 }]));
+  const byCategory = new Map<ExpenseCategory, number>();
+  for (const row of input.expenses) {
+    const dayRow = byDay.get(row.date);
+    if (dayRow) dayRow.expensesCents += row.amountCents;
+    byCategory.set(row.category, (byCategory.get(row.category) ?? 0) + row.amountCents);
+  }
   const byHour = new Map<number, { salesCents: number; orders: number }>();
 
   for (const order of input.orders) {
@@ -45,11 +53,14 @@ export function buildSummary(input: SummaryInput) {
     weekday: isoWeekday(date),
     sales: fromCents(row.salesCents),
     orders: row.orders,
+    expenses: fromCents(row.expensesCents),
     salesCents: row.salesCents,
+    expensesCents: row.expensesCents,
   }));
 
   const salesCents = days.reduce((sum, day) => sum + day.salesCents, 0);
   const orders = days.reduce((sum, day) => sum + day.orders, 0);
+  const expensesCents = days.reduce((sum, day) => sum + day.expensesCents, 0);
   const best = days.reduce<(typeof days)[number] | null>(
     (top, day) => (day.salesCents > 0 && (!top || day.salesCents > top.salesCents) ? day : top),
     null,
@@ -78,8 +89,11 @@ export function buildSummary(input: SummaryInput) {
       collected: fromCents(collectedCents),
       daysWithSales: days.filter((day) => day.orders > 0).length,
       bestDay: best ? { date: best.date, sales: best.sales } : null,
+      expenses: fromCents(expensesCents),
+      // Cash view, not accounting profit: supplies bought today count fully today
+      salesMinusExpenses: fromCents(salesCents - expensesCents),
     },
-    days: days.map(({ salesCents: _omit, ...day }) => day),
+    days: days.map(({ salesCents: _sales, expensesCents: _expenses, ...day }) => day),
     byWeekday,
     byHour: [...byHour.entries()]
       .sort(([a], [b]) => a - b)
@@ -94,6 +108,9 @@ export function buildSummary(input: SummaryInput) {
       count: row.count,
       amount: fromCents(row.amountCents),
     })),
+    expensesByCategory: [...byCategory.entries()]
+      .sort(([, a], [, b]) => b - a)
+      .map(([category, cents]) => ({ category, amount: fromCents(cents) })),
   };
 }
 

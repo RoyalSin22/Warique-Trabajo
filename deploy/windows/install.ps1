@@ -223,6 +223,8 @@ try {
     } else {
         Write-Ok "Base de datos $Database ya existe (se conserva)"
     }
+    $pending = @(Get-PendingMigrations $mysql.BinDir $adminOptionFile $Database (Join-Path $ReleaseDir 'database\migrations'))
+    if ($pending.Count -gt 0) { Invoke-Migrations $mysql.BinDir $adminOptionFile $Database $pending } else { Write-Ok 'Esquema al dia' }
 
     # Random passwords that nobody needs to remember; rotated on every install run
     $appPassword = New-RandomSecret 24

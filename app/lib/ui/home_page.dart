@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/user.dart';
 import '../state/session.dart';
+import 'inventory/supplies_page.dart';
 import 'kitchen/dish_availability_page.dart';
 import 'kitchen/kitchen_board_page.dart';
 import 'owner/admin_page.dart';
@@ -28,6 +29,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       Role.kitchen => const [
         _Tab('Cocina', Icons.soup_kitchen, KitchenBoardPage()),
         _Tab('Platos', Icons.no_meals, DishAvailabilityPage()),
+        _Tab('Insumos', Icons.inventory_2, SuppliesPage()),
       ],
       // Sold-out switches for the owner live in Gestión > Menú
       Role.owner => const [

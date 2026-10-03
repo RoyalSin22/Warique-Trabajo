@@ -96,6 +96,21 @@ Parámetros útiles: `-ActiveHoursStart 8 -ActiveHoursEnd 22 -BackupTime '18:30'
   reconoce el reintento y **no duplica** el pedido ni el pago.
 - **Al cerrar:** en la pestaña *Cierre* revisa ventas, cobrado y por cobrar. En *Pagos del día* filtra
   por Yape o Plin y compara cada N.° de operación con tu app del banco (el botón copia el número).
+- **Caja (arqueo):** al abrir, en *Cierre* toca *Abrir caja* e ingresa el fondo de cambio. Al cerrar,
+  cuenta el efectivo **sin mirar** cuánto debería haber y toca *Cerrar caja*: el sistema muestra
+  *Cuadra*, *Faltan S/ …* o *Sobran S/ …*. Si después entra otro cobro o gasto en efectivo, la tarjeta
+  avisa y puedes *Volver a contar*.
+- **Gastos:** en *Gestión → Gastos* (o tocando *Gastos* en *Cierre*) registra cada gasto el mismo día.
+  Elige **Caja** si el dinero salió de la caja (baja lo que debe haber al cerrar) u **Otro** si pagaste
+  con Yape, transferencia o de tu bolsillo. Una compra del mercado se registra como *Insumos* con una
+  línea por insumo (cantidad y precio pagado): el stock sube solo. Un gasto mal registrado no se borra:
+  tócalo y anúlalo indicando el motivo.
+- **Insumos:** en *Gestión → Insumos* creas los insumos con su mínimo (ej.: avisar cuando queden 3 kg
+  de pescado). La cocina, en su pestaña *Insumos*, registra **conteos** (lo que hay realmente),
+  **mermas** (lo que se malogró) y **usos**. Arriba aparece la lista *Por comprar*. Vender un plato
+  **no** descuenta insumos: hacer un conteo al cierre mantiene el stock real.
+- **Ventas − gastos** en *Cierre* y *Estadísticas* es lo que entró menos lo que salió; no es la
+  utilidad contable (una compra grande cuenta completa el día que se paga).
 - **Respaldo:** la tarjeta de arriba en *Cierre* sale **verde** si el respaldo de anoche se hizo y se
   copió fuera de la PC; si sale **roja**, avisa a soporte ese mismo día.
 - **Personal:** en *Gestión → Usuarios* creas las cuentas de mozos y cocina, restableces claves y
@@ -129,8 +144,13 @@ Descomprime el paquete nuevo y, como administrador, desde esa carpeta:
 powershell -ExecutionPolicy Bypass -File .\scripts\update.ps1
 ```
 
-Hace un respaldo, reemplaza la aplicación y verifica que responda. Si la versión nueva no arranca,
-**vuelve sola a la anterior**. Hazlo fuera del horario de atención.
+Hace un respaldo, aplica los cambios pendientes de la base de datos, reemplaza la aplicación y
+verifica que responda. Si la versión nueva no arranca, **vuelve sola a la anterior**. Hazlo fuera del
+horario de atención.
+
+Si la versión trae cambios de base de datos (carpeta `database\migrations`), pedirá la **clave de
+root de MySQL** (la misma de la instalación); si no hay cambios, no la pide. Los cambios solo agregan
+tablas o columnas, así que la versión anterior sigue funcionando si hubiera que volver a ella.
 
 ## 7. Diagnóstico
 

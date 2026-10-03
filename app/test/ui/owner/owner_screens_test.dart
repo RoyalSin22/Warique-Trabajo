@@ -63,6 +63,20 @@ void main() {
           'topDishes': [
             {'dishId': 1, 'dishName': 'Ceviche', 'quantity': 5},
           ],
+          'expensesTotal': '42.50',
+          'salesMinusExpenses': '68.00',
+          'expensesByCategory': [
+            {'category': 'INSUMOS', 'amount': '30.50'},
+            {'category': 'GAS', 'amount': '12.00'},
+          ],
+        },
+      ),
+      '/api/cash' => (
+        200,
+        {
+          'date': request.url.queryParameters['date'],
+          'session': null,
+          'live': {'openingAmount': '0', 'cashSales': '50.5', 'cashExpenses': '30.5', 'expected': '20'},
         },
       ),
       '/api/reports/payments' => (
@@ -129,6 +143,9 @@ void main() {
       expect(find.text('4 pedidos'), findsOneWidget); // cancelled excluded
       expect(find.textContaining('NO se copió'), findsOneWidget);
       expect(find.textContaining('Hoy, '), findsOneWidget);
+      expect(find.text('S/ 42.50'), findsOneWidget); // expenses
+      expect(find.text('S/ 68.00'), findsOneWidget); // sales - expenses
+      expect(find.text('Abrir caja'), findsOneWidget);
 
       await tester.scrollUntilVisible(find.widgetWithText(ChoiceChip, 'Yape'), 200, scrollable: dayList);
       await tester.tap(find.widgetWithText(ChoiceChip, 'Yape'));
