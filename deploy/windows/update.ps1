@@ -22,9 +22,28 @@ $appDir = Join-Path $InstallDir 'app'
 $previousDir = Join-Path $InstallDir 'app.previous'
 $newVersion = (Get-Content -LiteralPath (Join-Path $ReleaseDir 'VERSION') -Raw).Trim()
 
+# A build that crashes on start makes Start-Service throw; that must lead to the rollback,
+# never abort the script with the restaurant's service stopped (found by the Windows CI job)
 function Start-AndCheck {
-    Start-Service -Name $config.serviceName
+    try {
+        Start-Service -Name $config.serviceName -ErrorAction Stop
+    } catch {
+        Write-Warn "El servicio no inicio: $($_.Exception.Message)"
+        return $null
+    }
     return (Wait-Health ([int]$config.port) 90)
+}
+
+# Stops the service so that nothing can restart it from the folder being swapped: the service's
+# own restart-on-failure would relaunch a crashing build in the middle of the rollback
+function Stop-ForSwap {
+    Set-Service -Name $config.serviceName -StartupType Disabled
+    Stop-Service -Name $config.serviceName -Force -ErrorAction SilentlyContinue
+    Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
+        Where-Object { $_.CommandLine -like '*dist\main.js*' } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Seconds 2
+    Set-Service -Name $config.serviceName -StartupType Automatic
 }
 
 function Copy-Tree([string]$From, [string]$To) {
@@ -64,7 +83,7 @@ Write-Step 'Verificando'
 $health = Start-AndCheck
 if (-not $health) {
     Write-Warn 'La nueva version no respondio. Volviendo a la anterior...'
-    Stop-Service -Name $config.serviceName -ErrorAction SilentlyContinue
+    Stop-ForSwap
     $failedDir = Join-Path $InstallDir ('app.fallida-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
     Rename-Item -LiteralPath $appDir -NewName (Split-Path $failedDir -Leaf)
     Rename-Item -LiteralPath $previousDir -NewName 'app'
