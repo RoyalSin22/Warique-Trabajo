@@ -50,6 +50,8 @@ are for a development machine.
 2. Create the database and the app user:
    ```powershell
    mysql -u root -p < database\schema.sql
+   # Later schema changes, in name order (the installer records them in schema_migrations)
+   Get-ChildItem database\migrations\*.sql | Sort-Object Name | ForEach-Object { Get-Content $_ -Raw | mysql -u root -p warique_orders }
    mysql -u root -p < database\app-user.sql   # edit the password first
    ```
 3. Configure and run:
