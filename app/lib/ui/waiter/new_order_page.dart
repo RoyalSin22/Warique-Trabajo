@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_exception.dart';
+import '../../core/ids.dart';
 import '../../core/money.dart';
 import '../../models/menu.dart';
 import '../../models/order.dart';
@@ -13,7 +14,12 @@ import 'cart.dart';
 
 /// Builds a new order. Pops with the created [Order].
 class NewOrderPage extends ConsumerStatefulWidget {
-  const NewOrderPage({super.key});
+  const NewOrderPage({super.key, this.initialTableId, this.initialCustomerName, this.initialType});
+
+  /// Pre-selected target, e.g. "otro pedido para esta mesa" from an order's detail.
+  final int? initialTableId;
+  final String? initialCustomerName;
+  final OrderType? initialType;
 
   @override
   ConsumerState<NewOrderPage> createState() => _NewOrderPageState();
@@ -21,11 +27,24 @@ class NewOrderPage extends ConsumerStatefulWidget {
 
 class _NewOrderPageState extends ConsumerState<NewOrderPage> {
   final _cart = Cart();
-  OrderType _type = OrderType.dineIn;
-  int? _tableId;
-  final _customerController = TextEditingController();
-  final _notesController = TextEditingController();
+  late OrderType _type = widget.initialType ?? OrderType.dineIn;
+  late int? _tableId = widget.initialTableId;
+  late final _customerController = TextEditingController(text: widget.initialCustomerName)
+    ..addListener(_contentChanged);
+  late final _notesController = TextEditingController()..addListener(_contentChanged);
   bool _submitting = false;
+
+  /// Idempotency key of the order being sent. Kept across retries of the SAME order (a timeout
+  /// may hide a success), discarded as soon as the waiter changes anything.
+  String? _requestId;
+
+  void _contentChanged() => _requestId = null;
+
+  /// setState for changes to the order itself.
+  void _change(VoidCallback fn) => setState(() {
+    fn();
+    _contentChanged();
+  });
 
   @override
   void dispose() {
@@ -38,7 +57,7 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
     if (!_cart.add(dish.id)) {
       showInfoSnack(context, 'Límite alcanzado: 99 unidades por plato y 50 platos distintos.');
     }
-    setState(() {});
+    _change(() {});
   }
 
   Future<void> _editNote(Dish dish) async {
@@ -65,7 +84,7 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
         ),
       ),
     );
-    if (note != null) setState(() => _cart.setNote(dish.id, note));
+    if (note != null) _change(() => _cart.setNote(dish.id, note));
   }
 
   String? _validationError(Map<int, Dish> menu) {
@@ -82,6 +101,7 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
       return;
     }
     setState(() => _submitting = true);
+    _requestId ??= newRequestId();
     try {
       final order = await ref
           .read(ordersRepositoryProvider)
@@ -91,16 +111,22 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
             customerName: _type == OrderType.takeaway ? _customerController.text : null,
             notes: _notesController.text,
             items: _cart.toItems(),
+            requestId: _requestId,
           );
       if (mounted) Navigator.of(context).pop(order);
     } on ApiException catch (error) {
       if (!mounted) return;
       // Someone marked a dish as sold out after it was added: drop it and tell the waiter
       if (error.unavailableDishIds.isNotEmpty) {
-        setState(() => error.unavailableDishIds.forEach(_cart.removeDish));
+        _change(() => error.unavailableDishIds.forEach(_cart.removeDish));
         ref.read(menuProvider.notifier).refresh();
       }
-      showErrorSnack(context, error);
+      if (error.isNetwork) {
+        // The order may have reached the kitchen; resending unchanged is safe (same key)
+        showErrorSnack(context, ApiException(0, '${error.message} Puedes reintentar: no se duplicará.'));
+      } else {
+        showErrorSnack(context, error);
+      }
     } catch (error) {
       if (mounted) showErrorSnack(context, error);
     } finally {
@@ -144,8 +170,8 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
             type: _type,
             tableId: _tableId,
             customerController: _customerController,
-            onTypeChanged: (type) => setState(() => _type = type),
-            onTableChanged: (id) => setState(() => _tableId = id),
+            onTypeChanged: (type) => _change(() => _type = type),
+            onTableChanged: (id) => _change(() => _tableId = id),
           ),
           const Divider(height: 1),
           Expanded(
@@ -154,7 +180,7 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
                 dishes: dishes,
                 cart: _cart,
                 onAdd: _add,
-                onRemove: (dish) => setState(() => _cart.remove(dish.id)),
+                onRemove: (dish) => _change(() => _cart.remove(dish.id)),
                 onNote: _editNote,
               ),
               AsyncError(:final error) => ErrorRetryView(

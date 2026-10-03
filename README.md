@@ -76,14 +76,20 @@ are for a development machine.
 | POST | `/dishes/availability/reset` | OWNER, KITCHEN |
 | GET | `/orders?status=PENDING,IN_PREPARATION&paymentStatus=UNPAID&date=YYYY-MM-DD` | all |
 | GET | `/orders/:id` | all |
-| POST | `/orders` | WAITER, OWNER |
+| POST | `/orders` | WAITER, OWNER (accepts `Idempotency-Key`) |
 | PATCH | `/orders/:id/status` | per transition (see `orders/order-status.ts`) |
-| POST | `/orders/:id/payments` | WAITER, OWNER |
+| POST | `/orders/:id/payments` | WAITER, OWNER (accepts `Idempotency-Key`) |
 | GET | `/reports/daily?date=YYYY-MM-DD` | OWNER |
 | GET | `/reports/payments?date=YYYY-MM-DD` | OWNER (reconciliation list) |
 | GET | `/reports/backup-status` | OWNER (reads `BACKUP_STATUS_FILE`) |
 
 Money values are returned as strings (`"18.50"`) to avoid floating-point rounding.
+
+**Retries never duplicate orders or payments.** The app sends an `Idempotency-Key` (UUID) with every
+new order and payment and reuses it when the waiter retries after a network error; the server runs
+the request once per user + URL + key and replays the first result to retries, including retries
+that arrive while the first request is still running. Keys live in memory for 15 minutes (single
+API process); a failed request is not remembered, so it can be retried with the same key.
 
 ## Realtime (Socket.IO)
 
@@ -96,9 +102,9 @@ Requirements: Flutter 3.44+ (tested with 3.47.6 / Dart 3.13). Screens in this it
 
 | Role | Screens |
 |---|---|
-| WAITER | Today's orders (ready / to collect / in kitchen), new order (table or takeaway, sold-out dishes blocked live), order detail, deliver, cancel, payment (cash with change, Yape/Plin with operation number) |
+| WAITER | Today's orders (ready / to collect / in kitchen), new order (or "another order for this table" from an order's detail) (table or takeaway, sold-out dishes blocked live), order detail, deliver, cancel, payment (cash with change, Yape/Plin with operation number) |
 | KITCHEN | Live board (pending / in preparation, FIFO, late orders in red, alert on cancellations), sold-out switches |
-| OWNER | Waiter and kitchen screens, plus **Cierre** (daily sales, collections per method, top dishes, every payment with its Yape/Plin operation number, backup health) and **Gestión** (menu with categories, prices and sold-out switches; tables; staff accounts and password resets) |
+| OWNER | Waiter and kitchen screens, plus **Cierre** (daily sales, collections per method, top dishes, every payment with its Yape/Plin operation number, backup health) and **Gestión** (menu with categories, prices and sold-out switches; tables; staff accounts and password resets; QR codes to connect staff phones) |
 | All | Change own password from the account menu |
 
 ```powershell
@@ -119,6 +125,8 @@ flutter build apk --release --dart-define=API_URL=http://192.168.1.50:3000
   same port as the API, so no CORS setup is needed. `CORS_ORIGINS` is only for `flutter run`.
 - **Android**: the API is plain HTTP on the local network, so the manifest enables
   `usesCleartextTraffic`. Keep staff devices on a Wi-Fi network separate from the customers' one.
+- **Deactivating a user** closes their Socket.IO connections immediately; their HTTP requests are
+  refused on the next call (the guard re-reads the user on every request).
 - **Realtime**: the green/red dot in the app bar shows the Socket.IO link. After every reconnection
   the app reloads the orders and the menu, so events missed while offline are recovered.
 

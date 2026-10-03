@@ -62,6 +62,10 @@ class OrdersRepository {
 
   final ApiClient _api;
 
+  /// Same key on a retry = the server returns the first result instead of duplicating it.
+  static Map<String, String>? _idempotency(String? requestId) =>
+      requestId == null ? null : {'Idempotency-Key': requestId};
+
   /// Today's orders (business day computed by the server), oldest first.
   Future<List<Order>> today({List<OrderStatus>? statuses}) async {
     final json =
@@ -83,6 +87,7 @@ class OrdersRepository {
     int? tableId,
     String? customerName,
     String? notes,
+    String? requestId,
   }) async {
     final json = await _api.post('/orders', {
       'orderType': orderType.api,
@@ -90,7 +95,7 @@ class OrdersRepository {
       if (customerName != null && customerName.trim().isNotEmpty) 'customerName': customerName.trim(),
       if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
       'items': [for (final item in items) item.toJson()],
-    });
+    }, _idempotency(requestId));
     return Order.fromJson(json as Json);
   }
 
@@ -108,13 +113,14 @@ class OrdersRepository {
     required Money amount,
     Money? amountReceived,
     String? operationNumber,
+    String? requestId,
   }) async {
     final json = await _api.post('/orders/$id/payments', {
       'method': method.api,
       'amount': amount.toJson(),
       if (method == PaymentMethod.cash) 'amountReceived': (amountReceived ?? amount).toJson(),
       if (method != PaymentMethod.cash) 'operationNumber': operationNumber?.trim(),
-    });
+    }, _idempotency(requestId));
     return Order.fromJson(json as Json);
   }
 }

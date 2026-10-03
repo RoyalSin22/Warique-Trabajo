@@ -37,7 +37,9 @@ PC del local (Windows 10/11)
    siempre la misma IP. Así los celulares no pierden la conexión cuando se reinicia el router.
 5. **Copia externa del respaldo**: un USB que quede conectado o, mejor, la carpeta de OneDrive o
    Google Drive del dueño (queda fuera del local si roban o se daña la PC).
-6. Define el **horario de atención** para que Windows Update no reinicie la PC en pleno servicio.
+6. **Horario:** el local atiende de **11:00 a 18:00**. El instalador ya viene configurado para ese
+   horario: Windows Update no reinicia la PC entre las 08:00 y las 22:00, y el respaldo diario corre a
+   las 18:30. Si la PC se apaga antes, el respaldo se hace apenas se vuelva a encender.
 
 ## 2. Instalar
 
@@ -47,19 +49,21 @@ en **PowerShell como administrador** dentro de esa carpeta:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 `
-  -BackupCopyDir 'C:\Users\Dueno\OneDrive\RespaldosWarique' `
-  -ActiveHoursStart 7 -ActiveHoursEnd 23 -BackupTime '23:30'
+  -BackupCopyDir 'C:\Users\Dueno\OneDrive\RespaldosWarique'
 ```
 
 El instalador pregunta antes de cambiar `my.ini` o el tipo de red, pide la clave de `root` de MySQL
 y los datos de la cuenta del dueño. Al final muestra la dirección para los celulares, por ejemplo
 `http://192.168.1.50:3000`, y hace un respaldo de prueba.
 
-Parámetros útiles: `-MySqlService MySQL84` si hay más de un MySQL, `-Port 3000`,
+Parámetros útiles: `-ActiveHoursStart 8 -ActiveHoursEnd 22 -BackupTime '18:30'` si cambia el horario,
+`-MySqlService MySQL84` si hay más de un MySQL, `-Port 3000`,
 `-RetentionDays 30`, `-SkipWindowsSettings` si la PC la administra otra persona.
 
 ## 3. Celulares y tablets
 
+- **Lo más fácil:** en la PC (o en el celular del dueño) entra a *Gestión → Conectar celulares* y
+  escanea el código QR con la cámara de cada celular.
 - **Navegador (recomendado para empezar):** abre `http://192.168.1.50:3000` en Chrome y usa
   *Agregar a pantalla principal*. Se actualiza solo cuando se actualiza el servidor.
 - **App Android:** si el paquete se armó con `-WithApk`, descárgala desde
@@ -72,6 +76,10 @@ Parámetros útiles: `-MySqlService MySQL84` si hay más de un MySQL, `-Port 300
 
 - **Al abrir:** en *Gestión → Menú*, toca el botón de *Habilitar todos* (flecha circular) para quitar
   los agotados del día anterior.
+- **Segunda ronda en una mesa:** un pedido enviado a cocina no se edita; en el detalle del pedido
+  toca el carrito (*Otro pedido para esta mesa*) y la mesa ya queda elegida.
+- **Si se corta el Wi-Fi al enviar:** vuelve a tocar *Enviar a cocina* sin cambiar nada; el sistema
+  reconoce el reintento y **no duplica** el pedido ni el pago.
 - **Al cerrar:** en la pestaña *Cierre* revisa ventas, cobrado y por cobrar. En *Pagos del día* filtra
   por Yape o Plin y compara cada N.° de operación con tu app del banco (el botón copia el número).
 - **Respaldo:** la tarjeta de arriba en *Cierre* sale **verde** si el respaldo de anoche se hizo y se

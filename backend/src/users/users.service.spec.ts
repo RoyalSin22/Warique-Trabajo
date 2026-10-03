@@ -3,11 +3,13 @@ import { BadRequestException } from '@nestjs/common';
 import { Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { USER_PUBLIC_SELECT, UsersService } from './users.service';
 
 describe('UsersService', () => {
   const prisma = { user: { create: jest.fn(), update: jest.fn(), findMany: jest.fn() } };
-  const service = new UsersService(prisma as unknown as PrismaService);
+  const realtime = { disconnectUser: jest.fn() };
+  const service = new UsersService(prisma as unknown as PrismaService, realtime as unknown as RealtimeService);
   const owner = { id: 1, username: 'owner', fullName: 'Owner', role: Role.OWNER };
 
   beforeEach(() => jest.clearAllMocks());
@@ -37,5 +39,15 @@ describe('UsersService', () => {
     expect(prisma.user.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 2 }, data: { isActive: false } }),
     );
+  });
+
+  it('closes the live connections of a deactivated user', async () => {
+    prisma.user.update.mockResolvedValue({ id: 2 });
+    await service.update(2, { isActive: false }, owner);
+    expect(realtime.disconnectUser).toHaveBeenCalledWith(2);
+
+    realtime.disconnectUser.mockClear();
+    await service.update(2, { fullName: 'Ana María' }, owner);
+    expect(realtime.disconnectUser).not.toHaveBeenCalled();
   });
 });

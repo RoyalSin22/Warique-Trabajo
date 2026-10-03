@@ -6,6 +6,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 import { validateEnv } from './config/env.validation';
+import { IdempotencyModule } from './common/idempotency/idempotency.module';
 import { HealthModule } from './health/health.module';
 import { MenuModule } from './menu/menu.module';
 import { OrdersModule } from './orders/orders.module';
@@ -25,6 +26,7 @@ import { UsersModule } from './users/users.module';
     }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
     PrismaModule,
+    IdempotencyModule,
     HealthModule,
     RealtimeModule,
     AuthModule,

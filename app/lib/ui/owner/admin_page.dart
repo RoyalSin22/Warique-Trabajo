@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../widgets/common.dart';
+import 'connect_devices_page.dart';
 import 'menu_admin_page.dart';
 import 'tables_admin_page.dart';
 import 'users_admin_page.dart';
@@ -35,6 +36,13 @@ class AdminPage extends ConsumerWidget {
             subtitle: const Text('Mozos, cocina y claves'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => open(const UsersAdminPage()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.qr_code),
+            title: const Text('Conectar celulares'),
+            subtitle: const Text('Código QR con la dirección de la app'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => open(const ConnectDevicesPage()),
           ),
           ListTile(
             leading: const Icon(Icons.key),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/ids.dart';
 import '../../core/money.dart';
 import '../../models/order.dart';
 import '../../state/session.dart';
@@ -22,10 +23,17 @@ class PaymentSheet extends ConsumerStatefulWidget {
 class _PaymentSheetState extends ConsumerState<PaymentSheet> {
   final _formKey = GlobalKey<FormState>();
   PaymentMethod _method = PaymentMethod.cash;
-  late final _amountController = TextEditingController(text: widget.balance.plain);
-  final _receivedController = TextEditingController();
-  final _operationController = TextEditingController();
+  late final _amountController = TextEditingController(text: widget.balance.plain)
+    ..addListener(_paymentChanged);
+  late final _receivedController = TextEditingController()..addListener(_paymentChanged);
+  late final _operationController = TextEditingController()..addListener(_paymentChanged);
   bool _submitting = false;
+
+  /// Idempotency key: a retry of the same payment after a timeout is never registered twice.
+  /// Any change to the form makes it a different payment.
+  String? _requestId;
+
+  void _paymentChanged() => _requestId = null;
 
   static final _operationPattern = RegExp(r'^[A-Za-z0-9-]{4,30}$'); // same as CreatePaymentDto
   static final _moneyInput = FilteringTextInputFormatter.allow(RegExp(r'^\d{0,5}([.,]\d{0,2})?'));
@@ -62,6 +70,7 @@ class _PaymentSheetState extends ConsumerState<PaymentSheet> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _submitting = true);
+    _requestId ??= newRequestId();
     try {
       final updated = await ref
           .read(ordersRepositoryProvider)
@@ -71,6 +80,7 @@ class _PaymentSheetState extends ConsumerState<PaymentSheet> {
             amount: _amount!,
             amountReceived: _method == PaymentMethod.cash ? _received : null,
             operationNumber: _method == PaymentMethod.cash ? null : _operationController.text,
+            requestId: _requestId,
           );
       if (mounted) Navigator.pop(context, updated);
     } catch (error) {
@@ -111,7 +121,10 @@ class _PaymentSheetState extends ConsumerState<PaymentSheet> {
                     ButtonSegment(value: method, label: Text(method.label)),
                 ],
                 selected: {_method},
-                onSelectionChanged: (selection) => setState(() => _method = selection.first),
+                onSelectionChanged: (selection) => setState(() {
+                  _method = selection.first;
+                  _paymentChanged();
+                }),
               ),
               const SizedBox(height: 12),
               TextFormField(

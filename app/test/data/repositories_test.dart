@@ -90,4 +90,25 @@ void main() {
     );
     expect(unauthorizedCalls, 1);
   });
+
+  test('sends the Idempotency-Key header only when a request id is given', () async {
+    await repository.create(
+      orderType: OrderType.takeaway,
+      items: const [NewOrderItem(dishId: 5, quantity: 1)],
+    );
+    await repository.create(
+      orderType: OrderType.takeaway,
+      items: const [NewOrderItem(dishId: 5, quantity: 1)],
+      requestId: 'b7d6a3c2-0000-4000-8000-000000000001',
+    );
+    await repository.registerPayment(
+      1,
+      method: PaymentMethod.cash,
+      amount: Money.parse('5'),
+      requestId: 'pay-key-123',
+    );
+    expect(http.requests[0].headers.containsKey('Idempotency-Key'), isFalse);
+    expect(http.requests[1].headers['Idempotency-Key'], 'b7d6a3c2-0000-4000-8000-000000000001');
+    expect(http.requests[2].headers['Idempotency-Key'], 'pay-key-123');
+  });
 }

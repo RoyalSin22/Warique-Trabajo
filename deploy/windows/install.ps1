@@ -21,17 +21,20 @@ param(
     [int]$MySqlPort = 3306,
     [ValidateRange(1024, 65535)]
     [int]$Port = 3000,
+    # After closing (the restaurant serves 11:00-18:00). If the PC is already off, the task runs
+    # as soon as it is turned on (StartWhenAvailable)
     [ValidatePattern('^\d{2}:\d{2}$')]
-    [string]$BackupTime = '23:30',
+    [string]$BackupTime = '18:30',
     # Segunda copia del respaldo: USB, disco externo o carpeta sincronizada (OneDrive/Google Drive)
     [string]$BackupCopyDir = '',
     [ValidateRange(3, 365)]
     [int]$RetentionDays = 30,
-    # Horas en las que Windows Update no reinicia la PC (maximo 18 horas)
+    # Horas en las que Windows Update no reinicia la PC (maximo 18 horas). Atencion 11:00-18:00:
+    # se cubre desde la preparacion (08:00) hasta despues del cierre de caja (22:00)
     [ValidateRange(0, 23)]
-    [int]$ActiveHoursStart = 7,
+    [int]$ActiveHoursStart = 8,
     [ValidateRange(0, 23)]
-    [int]$ActiveHoursEnd = 23,
+    [int]$ActiveHoursEnd = 22,
     [switch]$SkipWindowsSettings
 )
 
@@ -364,6 +367,7 @@ try {
     Write-Host "`nInstalacion terminada." -ForegroundColor Green
     Write-Host 'Abre la app desde celulares y tablets conectados al Wi-Fi del local:'
     foreach ($ip in @(Get-LanAddresses)) { Write-Host "    http://$($ip):$Port" -ForegroundColor White }
+    Write-Host 'En la app: Gestion > Conectar celulares muestra un codigo QR con esta direccion.'
     Write-Host 'Reserva esa IP en el router para que no cambie (direccion MAC de esta PC):'
     Get-NetAdapter -Physical | Where-Object Status -eq 'Up' | ForEach-Object { Write-Host "    $($_.Name): $($_.MacAddress)" }
 } finally {

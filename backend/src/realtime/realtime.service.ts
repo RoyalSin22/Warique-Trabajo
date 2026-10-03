@@ -1,6 +1,6 @@
 // backend/src/realtime/realtime.service.ts
 import { Injectable } from '@nestjs/common';
-import { RealtimeGateway, STAFF_ROOM } from './realtime.gateway';
+import { RealtimeGateway, STAFF_ROOM, userRoom } from './realtime.gateway';
 
 export const RealtimeEvent = {
   ORDER_CREATED: 'order.created',
@@ -28,6 +28,11 @@ export class RealtimeService {
 
   dishesReset(result: { updated: number }): void {
     this.emit(RealtimeEvent.DISHES_RESET, result);
+  }
+
+  /** Closes every live connection of a user (e.g. just deactivated). */
+  disconnectUser(userId: number): void {
+    this.gateway.server?.in(userRoom(userId)).disconnectSockets(true);
   }
 
   private emit(event: string, payload: unknown): void {

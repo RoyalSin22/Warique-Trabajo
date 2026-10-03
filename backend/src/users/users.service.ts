@@ -4,6 +4,7 @@ import { Role } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { hashPassword } from '../auth/password.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
 
 /** password_hash is never selected, so it can never leak in a response. */
@@ -19,7 +20,10 @@ export const USER_PUBLIC_SELECT = {
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   findAll(includeInactive: boolean) {
     return this.prisma.user.findMany({
@@ -43,7 +47,13 @@ export class UsersService {
     if (isSelf && (dto.isActive === false || (dto.role !== undefined && dto.role !== Role.OWNER))) {
       throw new BadRequestException('You cannot deactivate or demote your own account');
     }
-    return this.prisma.user.update({ where: { id }, data: dto, select: USER_PUBLIC_SELECT });
+    return this.prisma.user
+      .update({ where: { id }, data: dto, select: USER_PUBLIC_SELECT })
+      .then((user) => {
+        // HTTP requests are already refused (the guard re-reads the user); close the live feed too
+        if (dto.isActive === false) this.realtime.disconnectUser(id);
+        return user;
+      });
   }
 
   async resetPassword(id: number, password: string) {

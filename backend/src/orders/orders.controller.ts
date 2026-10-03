@@ -1,9 +1,20 @@
 // backend/src/orders/orders.controller.ts
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Query,
+  UseInterceptors,
+} from '@nestjs/common';
 import { Role } from '@prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
+import { IdempotencyInterceptor } from '../common/idempotency/idempotency.interceptor';
 import { CreateOrderDto, ListOrdersQueryDto, UpdateOrderStatusDto } from './dto/order.dto';
 import { CreatePaymentDto } from './dto/payment.dto';
 import { OrdersService } from './orders.service';
@@ -27,6 +38,7 @@ export class OrdersController {
   }
 
   @Roles(Role.WAITER, Role.OWNER)
+  @UseInterceptors(IdempotencyInterceptor) // a retried "Enviar a cocina" never creates two orders
   @Post()
   create(@Body() dto: CreateOrderDto, @CurrentUser() user: AuthenticatedUser) {
     return this.ordersService.create(dto, user);
@@ -43,6 +55,7 @@ export class OrdersController {
   }
 
   @Roles(Role.WAITER, Role.OWNER)
+  @UseInterceptors(IdempotencyInterceptor)
   @Post(':id/payments')
   registerPayment(
     @Param('id', ParseIntPipe) id: number,

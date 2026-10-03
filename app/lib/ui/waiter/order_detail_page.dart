@@ -8,6 +8,7 @@ import '../../models/user.dart';
 import '../../state/orders.dart';
 import '../../state/session.dart';
 import '../widgets/common.dart';
+import 'new_order_page.dart';
 import 'payment_sheet.dart';
 
 class OrderDetailPage extends ConsumerStatefulWidget {
@@ -62,6 +63,21 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _newRoundFor(Order order) async {
+    final created = await Navigator.of(context).push<Order>(
+      MaterialPageRoute(
+        builder: (_) => NewOrderPage(
+          initialType: order.orderType,
+          initialTableId: order.tableId,
+          initialCustomerName: order.customerName,
+        ),
+      ),
+    );
+    if (created == null || !mounted) return;
+    ref.read(ordersProvider.notifier).upsert(created);
+    showInfoSnack(context, 'Pedido #${created.id} enviado a cocina');
   }
 
   Future<void> _changeStatus(Order order, OrderStatus to) => _run(
@@ -124,6 +140,15 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
         title: Text('Pedido #${order.id}'),
         actions: [
           const ConnectionIndicator(),
+          // Orders cannot be edited once in the kitchen: a second round is a new order, same target
+          if (role != Role.kitchen && order.status != OrderStatus.cancelled)
+            IconButton(
+              onPressed: () => _newRoundFor(order),
+              icon: const Icon(Icons.add_shopping_cart),
+              tooltip: order.orderType == OrderType.dineIn
+                  ? 'Otro pedido para esta mesa'
+                  : 'Otro pedido para este cliente',
+            ),
           IconButton(onPressed: _busy ? null : _load, icon: const Icon(Icons.refresh)),
         ],
       ),
