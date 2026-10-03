@@ -273,14 +273,24 @@ class _KitchenCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('${item.quantity} × ${item.dishName}', style: theme.textTheme.titleMedium),
+                    // An icon, not a "↳" character: the bundled offline font has no arrow glyphs
                     if (item.notes != null)
-                      Text(
-                        '  ↳ ${item.notes}',
-                        style: TextStyle(
-                          color: Colors.amber.shade900,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                        ),
+                      Row(
+                        children: [
+                          const SizedBox(width: 8),
+                          Icon(Icons.subdirectory_arrow_right, size: 18, color: Colors.amber.shade900),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              item.notes!,
+                              style: TextStyle(
+                                color: Colors.amber.shade900,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                   ],
                 ),

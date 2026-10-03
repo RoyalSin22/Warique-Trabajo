@@ -246,21 +246,22 @@ class _TargetSelector extends ConsumerWidget {
               AsyncValue(value: final list?) when list.isEmpty => const Text(
                 'No hay mesas registradas. El dueño debe crearlas.',
               ),
-              AsyncValue(value: final list?) => SizedBox(
-                height: 40,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    for (final table in list)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: ChoiceChip(
+              // Wrap, not a horizontal list: every table (and the selected one) stays visible
+              AsyncValue(value: final list?) => ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 132),
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 2,
+                    children: [
+                      for (final table in list)
+                        ChoiceChip(
                           label: Text(table.label),
                           selected: table.id == tableId,
                           onSelected: (selected) => onTableChanged(selected ? table.id : null),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
               AsyncError() => TextButton.icon(

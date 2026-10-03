@@ -42,7 +42,7 @@ void main() {
     expect(find.text('En preparación (0)'), findsOneWidget);
     expect(find.byTooltip('1 por recoger'), findsOneWidget);
     expect(find.text('2 × Ceviche'), findsOneWidget);
-    expect(find.text('  ↳ sin ají'), findsOneWidget);
+    expect(find.text('sin ají'), findsOneWidget);
 
     await tester.tap(find.text('Empezar'));
     await tester.pumpAndSettle();
