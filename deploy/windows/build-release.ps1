@@ -70,8 +70,11 @@ if ($WithApk) {
 Write-Step 'Ensamblando el paquete'
 $stageApp = Join-Path $stage 'app'
 Copy-Directory (Join-Path $backend 'dist') (Join-Path $stageApp 'dist')
-Get-ChildItem -LiteralPath (Join-Path $stageApp 'dist') -Recurse -Include '*.spec.js', '*.spec.d.ts', '*.tsbuildinfo' |
-    Remove-Item -Force
+# Explicit loop: on Windows PowerShell 5.1, piping Get-ChildItem -Include results into Remove-Item
+# throws NullReferenceException
+$testFiles = @(Get-ChildItem -LiteralPath (Join-Path $stageApp 'dist') -Recurse -File |
+        Where-Object { $_.Name -like '*.spec.js' -or $_.Name -like '*.spec.d.ts' -or $_.Name -like '*.tsbuildinfo' })
+foreach ($testFile in $testFiles) { Remove-Item -LiteralPath $testFile.FullName -Force }
 foreach ($file in @('package.json', 'package-lock.json')) {
     Copy-Item -LiteralPath (Join-Path $backend $file) -Destination $stageApp
 }
