@@ -27,17 +27,16 @@ class _WaiterOrdersPageState extends ConsumerState<WaiterOrdersPage> {
   }
 
   Future<void> _newOrder() async {
-    final created = await Navigator.of(context).push<Order>(
-      MaterialPageRoute(builder: (_) => const NewOrderPage()),
-    );
+    final created = await Navigator.of(
+      context,
+    ).push<Order>(MaterialPageRoute(builder: (_) => const NewOrderPage()));
     if (created == null || !mounted) return;
     ref.read(ordersProvider.notifier).upsert(created);
     showInfoSnack(context, 'Pedido #${created.id} enviado a cocina');
   }
 
-  void _openDetail(Order order) => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => OrderDetailPage(orderId: order.id)),
-      );
+  void _openDetail(Order order) =>
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => OrderDetailPage(orderId: order.id)));
 
   @override
   Widget build(BuildContext context) {
@@ -83,13 +82,15 @@ class _WaiterOrdersPageState extends ConsumerState<WaiterOrdersPage> {
       ),
       body: switch (orders) {
         AsyncValue(value: final list?) => RefreshIndicator(
-            onRefresh: _refresh,
-            child: _onlyPending
-                ? _PendingSections(orders: list, onTap: _openDetail)
-                : _OrderList(orders: list.reversed.toList(), onTap: _openDetail),
-          ),
-        AsyncError(:final error) =>
-          ErrorRetryView(error: error, onRetry: () => ref.invalidate(ordersProvider)),
+          onRefresh: _refresh,
+          child: _onlyPending
+              ? _PendingSections(orders: list, onTap: _openDetail)
+              : _OrderList(orders: list.reversed.toList(), onTap: _openDetail),
+        ),
+        AsyncError(:final error) => ErrorRetryView(
+          error: error,
+          onRetry: () => ref.invalidate(ordersProvider),
+        ),
         _ => const Center(child: CircularProgressIndicator()),
       },
     );
@@ -113,10 +114,12 @@ class _PendingSections extends StatelessWidget {
         .toList();
 
     if (ready.isEmpty && inKitchen.isEmpty && toCollect.isEmpty) {
-      return ListView(children: const [
-        SizedBox(height: 120),
-        EmptyView(icon: Icons.check_circle_outline, message: 'Nada pendiente por ahora'),
-      ]);
+      return ListView(
+        children: const [
+          SizedBox(height: 120),
+          EmptyView(icon: Icons.check_circle_outline, message: 'Nada pendiente por ahora'),
+        ],
+      );
     }
 
     return ListView(
@@ -148,10 +151,12 @@ class _OrderList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (orders.isEmpty) {
-      return ListView(children: const [
-        SizedBox(height: 120),
-        EmptyView(icon: Icons.receipt_long, message: 'Aún no hay pedidos hoy'),
-      ]);
+      return ListView(
+        children: const [
+          SizedBox(height: 120),
+          EmptyView(icon: Icons.receipt_long, message: 'Aún no hay pedidos hoy'),
+        ],
+      );
     }
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 96),
@@ -170,13 +175,15 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-        child: Row(children: [
-          Icon(Icons.circle, size: 10, color: color),
-          const SizedBox(width: 8),
-          Text('$title ($count)', style: Theme.of(context).textTheme.titleSmall),
-        ]),
-      );
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+    child: Row(
+      children: [
+        Icon(Icons.circle, size: 10, color: color),
+        const SizedBox(width: 8),
+        Text('$title ($count)', style: Theme.of(context).textTheme.titleSmall),
+      ],
+    ),
+  );
 }
 
 class _OrderTile extends StatelessWidget {
@@ -193,14 +200,21 @@ class _OrderTile extends StatelessWidget {
       child: ListTile(
         onTap: () => onTap(order),
         title: Text('#${order.id} · ${order.target}', style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(summary, maxLines: 2, overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 6),
-          Wrap(spacing: 6, runSpacing: 4, children: [
-            StatusChip(order.status),
-            if (order.status != OrderStatus.cancelled) PaymentChip(order.paymentStatus),
-          ]),
-        ]),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(summary, maxLines: 2, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                StatusChip(order.status),
+                if (order.status != OrderStatus.cancelled) PaymentChip(order.paymentStatus),
+              ],
+            ),
+          ],
+        ),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,

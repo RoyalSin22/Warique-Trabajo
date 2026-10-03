@@ -22,11 +22,7 @@ class ApiException implements Exception {
     final details = body is Map<String, dynamic> ? body : <String, dynamic>{};
     final rawMessage = details['message'];
     final serverMessage = rawMessage is List ? rawMessage.join('\n') : rawMessage?.toString();
-    return ApiException(
-      statusCode,
-      translateServerMessage(statusCode, serverMessage),
-      details: details,
-    );
+    return ApiException(statusCode, translateServerMessage(statusCode, serverMessage), details: details);
   }
 
   @override
@@ -39,8 +35,7 @@ const _knownMessages = <String, String>{
   'Some dishes are not available': 'Algunos platos ya no están disponibles. Se quitaron del pedido.',
   'The order was modified by someone else. Reload and try again':
       'Otra persona modificó este pedido. Se actualizó la información; revisa e intenta de nuevo.',
-  'Cannot cancel an order that already has payments':
-      'No se puede cancelar un pedido que ya tiene pagos.',
+  'Cannot cancel an order that already has payments': 'No se puede cancelar un pedido que ya tiene pagos.',
   'cancelReason is required to cancel an order': 'Indica el motivo de la cancelación.',
   'The order is already paid': 'El pedido ya está pagado.',
   'Cannot register a payment for a cancelled order': 'El pedido está cancelado.',

@@ -15,12 +15,14 @@ void main() {
   setUp(() {
     unauthorizedCalls = 0;
     http = RecordingHttp((request) => (200, orderJson()));
-    repository = OrdersRepository(ApiClient(
-      baseUrl: 'http://server.test',
-      token: 'jwt',
-      httpClient: http.client,
-      onUnauthorized: () => unauthorizedCalls++,
-    ));
+    repository = OrdersRepository(
+      ApiClient(
+        baseUrl: 'http://server.test',
+        token: 'jwt',
+        httpClient: http.client,
+        onUnauthorized: () => unauthorizedCalls++,
+      ),
+    );
   });
 
   test('sends the bearer token and the /api prefix', () async {
@@ -47,14 +49,22 @@ void main() {
   });
 
   test('cash payments send amountReceived as JSON numbers', () async {
-    await repository.registerPayment(1,
-        method: PaymentMethod.cash, amount: Money.parse('18.50'), amountReceived: Money.parse('20'));
+    await repository.registerPayment(
+      1,
+      method: PaymentMethod.cash,
+      amount: Money.parse('18.50'),
+      amountReceived: Money.parse('20'),
+    );
     expect(http.bodyOf(0), {'method': 'CASH', 'amount': 18.5, 'amountReceived': 20});
   });
 
   test('Yape payments send only the operation number', () async {
-    await repository.registerPayment(1,
-        method: PaymentMethod.yape, amount: Money.parse('40'), operationNumber: ' 123456 ');
+    await repository.registerPayment(
+      1,
+      method: PaymentMethod.yape,
+      amount: Money.parse('40'),
+      operationNumber: ' 123456 ',
+    );
     expect(http.bodyOf(0), {'method': 'YAPE', 'amount': 40, 'operationNumber': '123456'});
   });
 
@@ -66,13 +76,18 @@ void main() {
 
   test('a 401 notifies the session and throws a translated error', () async {
     http = RecordingHttp((request) => (401, {'statusCode': 401, 'message': 'Unauthorized'}));
-    repository = OrdersRepository(ApiClient(
-      baseUrl: 'http://server.test',
-      token: 'jwt',
-      httpClient: http.client,
-      onUnauthorized: () => unauthorizedCalls++,
-    ));
-    await expectLater(repository.byId(1), throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 401)));
+    repository = OrdersRepository(
+      ApiClient(
+        baseUrl: 'http://server.test',
+        token: 'jwt',
+        httpClient: http.client,
+        onUnauthorized: () => unauthorizedCalls++,
+      ),
+    );
+    await expectLater(
+      repository.byId(1),
+      throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 401)),
+    );
     expect(unauthorizedCalls, 1);
   });
 }

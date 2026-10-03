@@ -12,8 +12,9 @@ final sharedPreferencesProvider = Provider<SharedPreferences>(
   (ref) => throw UnimplementedError('sharedPreferencesProvider must be overridden'),
 );
 
-final settingsStoreProvider =
-    Provider<SettingsStore>((ref) => SettingsStore(ref.watch(sharedPreferencesProvider)));
+final settingsStoreProvider = Provider<SettingsStore>(
+  (ref) => SettingsStore(ref.watch(sharedPreferencesProvider)),
+);
 
 class Session {
   const Session({required this.serverUrl, required this.token, required this.user});
@@ -45,11 +46,7 @@ class SessionNotifier extends AsyncNotifier<Session?> {
     }
   }
 
-  Future<void> login({
-    required String serverUrl,
-    required String username,
-    required String password,
-  }) async {
+  Future<void> login({required String serverUrl, required String username, required String password}) async {
     final url = normalizeServerUrl(serverUrl);
     final result = await AuthRepository(ApiClient(baseUrl: url)).login(username.trim(), password);
     await _settings.setServerUrl(url);

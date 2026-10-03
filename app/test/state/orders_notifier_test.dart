@@ -40,8 +40,10 @@ void main() {
   test('applies order.created and order.updated events', () async {
     await load();
     realtime.emit(RealtimeEvent.orderCreated, orderJson(id: 2, createdAt: '2026-10-03T15:01:00.000Z'));
-    realtime.emit(RealtimeEvent.orderUpdated,
-        orderJson(id: 1, status: 'IN_PREPARATION', updatedAt: '2026-10-03T15:02:00.000Z'));
+    realtime.emit(
+      RealtimeEvent.orderUpdated,
+      orderJson(id: 1, status: 'IN_PREPARATION', updatedAt: '2026-10-03T15:02:00.000Z'),
+    );
     await pumpEventQueue();
 
     final orders = container.read(ordersProvider).value!;
@@ -51,10 +53,14 @@ void main() {
 
   test('ignores an event older than the copy it already has', () async {
     await load();
-    realtime.emit(RealtimeEvent.orderUpdated,
-        orderJson(id: 1, status: 'READY', updatedAt: '2026-10-03T15:05:00.000Z'));
-    realtime.emit(RealtimeEvent.orderUpdated,
-        orderJson(id: 1, status: 'IN_PREPARATION', updatedAt: '2026-10-03T15:02:00.000Z'));
+    realtime.emit(
+      RealtimeEvent.orderUpdated,
+      orderJson(id: 1, status: 'READY', updatedAt: '2026-10-03T15:05:00.000Z'),
+    );
+    realtime.emit(
+      RealtimeEvent.orderUpdated,
+      orderJson(id: 1, status: 'IN_PREPARATION', updatedAt: '2026-10-03T15:02:00.000Z'),
+    );
     await pumpEventQueue();
 
     expect(container.read(ordersProvider).value!.single.status, OrderStatus.ready);

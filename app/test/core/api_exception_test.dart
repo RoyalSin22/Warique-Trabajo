@@ -9,8 +9,9 @@ void main() {
   });
 
   test('extracts the balance from the overpayment message', () {
-    final error = ApiException.fromResponse(
-        400, {'message': 'Amount exceeds the pending balance of S/ 12.00'});
+    final error = ApiException.fromResponse(400, {
+      'message': 'Amount exceeds the pending balance of S/ 12.00',
+    });
     expect(error.message, 'El monto supera el saldo pendiente (S/ 12.00).');
   });
 
@@ -23,10 +24,14 @@ void main() {
   });
 
   test('joins validation message lists and falls back by status code', () {
-    expect(ApiException.fromResponse(400, {'message': ['a', 'b']}).message, contains('a\nb'));
+    expect(
+      ApiException.fromResponse(400, {
+        'message': ['a', 'b'],
+      }).message,
+      contains('a\nb'),
+    );
     expect(ApiException.fromResponse(403, null).message, contains('permiso'));
     expect(ApiException.fromResponse(429, null).message, contains('Demasiados intentos'));
-    expect(ApiException.fromResponse(500, {'message': 'Internal server error'}).message,
-        contains('500'));
+    expect(ApiException.fromResponse(500, {'message': 'Internal server error'}).message, contains('500'));
   });
 }

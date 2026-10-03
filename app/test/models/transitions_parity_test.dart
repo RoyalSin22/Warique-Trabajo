@@ -24,10 +24,9 @@ void main() {
       }
       final toMatch = RegExp(r'^\s{4}\[OrderStatus\.(\w+)\]:\s*\[([^\]]*)\]').firstMatch(line);
       if (toMatch != null && from != null) {
-        backend[from]![toMatch.group(1)!] = RegExp(r'Role\.(\w+)')
-            .allMatches(toMatch.group(2)!)
-            .map((m) => m.group(1)!)
-            .toSet();
+        backend[from]![toMatch.group(1)!] = RegExp(
+          r'Role\.(\w+)',
+        ).allMatches(toMatch.group(2)!).map((m) => m.group(1)!).toSet();
       }
     }
 

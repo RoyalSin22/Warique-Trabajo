@@ -63,7 +63,9 @@ class _PaymentSheetState extends ConsumerState<PaymentSheet> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _submitting = true);
     try {
-      final updated = await ref.read(ordersRepositoryProvider).registerPayment(
+      final updated = await ref
+          .read(ordersRepositoryProvider)
+          .registerPayment(
             widget.order.id,
             method: _method,
             amount: _amount!,
@@ -93,77 +95,91 @@ class _PaymentSheetState extends ConsumerState<PaymentSheet> {
       child: Form(
         key: _formKey,
         child: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text('Cobrar #${widget.order.id} · ${widget.order.target}',
-                style: Theme.of(context).textTheme.titleLarge),
-            Text('Saldo pendiente: ${widget.balance}'),
-            const SizedBox(height: 12),
-            SegmentedButton<PaymentMethod>(
-              segments: [
-                for (final method in PaymentMethod.values)
-                  ButtonSegment(value: method, label: Text(method.label)),
-              ],
-              selected: {_method},
-              onSelectionChanged: (selection) => setState(() => _method = selection.first),
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _amountController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [_moneyInput],
-              decoration: const InputDecoration(labelText: 'Monto a cobrar', prefixText: 'S/ '),
-              validator: _validateAmount,
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 8),
-            if (_method == PaymentMethod.cash) ...[
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Cobrar #${widget.order.id} · ${widget.order.target}',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              Text('Saldo pendiente: ${widget.balance}'),
+              const SizedBox(height: 12),
+              SegmentedButton<PaymentMethod>(
+                segments: [
+                  for (final method in PaymentMethod.values)
+                    ButtonSegment(value: method, label: Text(method.label)),
+                ],
+                selected: {_method},
+                onSelectionChanged: (selection) => setState(() => _method = selection.first),
+              ),
+              const SizedBox(height: 12),
               TextFormField(
-                controller: _receivedController,
+                controller: _amountController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [_moneyInput],
-                decoration: const InputDecoration(labelText: 'Paga con', prefixText: 'S/ '),
-                validator: _validateReceived,
+                decoration: const InputDecoration(labelText: 'Monto a cobrar', prefixText: 'S/ '),
+                validator: _validateAmount,
                 onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 8),
-              Wrap(spacing: 6, children: [
-                if (amount != null && amount.isPositive)
-                  ActionChip(label: const Text('Exacto'), onPressed: () => _setReceived(amount)),
-                for (final bill in bills)
-                  if (amount == null || bill >= amount)
-                    ActionChip(label: Text('S/ ${bill.cents ~/ 100}'), onPressed: () => _setReceived(bill)),
-              ]),
-              const SizedBox(height: 8),
-              Card(
-                color: Theme.of(context).colorScheme.secondaryContainer,
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(children: [
-                    const Expanded(child: Text('Vuelto')),
-                    Text(change?.toString() ?? '—', style: Theme.of(context).textTheme.headlineSmall),
-                  ]),
+              if (_method == PaymentMethod.cash) ...[
+                TextFormField(
+                  controller: _receivedController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [_moneyInput],
+                  decoration: const InputDecoration(labelText: 'Paga con', prefixText: 'S/ '),
+                  validator: _validateReceived,
+                  onChanged: (_) => setState(() {}),
                 ),
-              ),
-            ] else
-              TextFormField(
-                controller: _operationController,
-                textCapitalization: TextCapitalization.characters,
-                decoration: InputDecoration(
-                  labelText: 'N.° de operación ${_method.label}',
-                  helperText: 'Cópialo de la pantalla del cliente. El dueño lo concilia al cierre.',
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  children: [
+                    if (amount != null && amount.isPositive)
+                      ActionChip(label: const Text('Exacto'), onPressed: () => _setReceived(amount)),
+                    for (final bill in bills)
+                      if (amount == null || bill >= amount)
+                        ActionChip(
+                          label: Text('S/ ${bill.cents ~/ 100}'),
+                          onPressed: () => _setReceived(bill),
+                        ),
+                  ],
                 ),
-                validator: _validateOperation,
+                const SizedBox(height: 8),
+                Card(
+                  color: Theme.of(context).colorScheme.secondaryContainer,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        const Expanded(child: Text('Vuelto')),
+                        Text(change?.toString() ?? '—', style: Theme.of(context).textTheme.headlineSmall),
+                      ],
+                    ),
+                  ),
+                ),
+              ] else
+                TextFormField(
+                  controller: _operationController,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: InputDecoration(
+                    labelText: 'N.° de operación ${_method.label}',
+                    helperText: 'Cópialo de la pantalla del cliente. El dueño lo concilia al cierre.',
+                  ),
+                  validator: _validateOperation,
+                ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: _submitting ? null : _submit,
+                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                icon: _submitting
+                    ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.payments),
+                label: Text('Registrar ${amount?.toString() ?? ''}'),
               ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _submitting ? null : _submit,
-              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-              icon: _submitting
-                  ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.payments),
-              label: Text('Registrar ${amount?.toString() ?? ''}'),
-            ),
-          ]),
+            ],
+          ),
         ),
       ),
     );

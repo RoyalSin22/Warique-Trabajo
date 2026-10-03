@@ -10,10 +10,12 @@ void main() {
   testWidgets('validates required fields and the server address', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
-    await tester.pumpWidget(ProviderScope(
-      overrides: [sharedPreferencesProvider.overrideWithValue(preferences)],
-      child: const MaterialApp(home: LoginPage()),
-    ));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [sharedPreferencesProvider.overrideWithValue(preferences)],
+        child: const MaterialApp(home: LoginPage()),
+      ),
+    );
 
     await tester.tap(find.text('Ingresar'));
     await tester.pump();

@@ -24,15 +24,15 @@ class _HomePageState extends ConsumerState<HomePage> {
     final tabs = switch (role) {
       Role.waiter => const [_Tab('Pedidos', Icons.receipt_long, WaiterOrdersPage())],
       Role.kitchen => const [
-          _Tab('Cocina', Icons.soup_kitchen, KitchenBoardPage()),
-          _Tab('Platos', Icons.no_meals, DishAvailabilityPage()),
-        ],
+        _Tab('Cocina', Icons.soup_kitchen, KitchenBoardPage()),
+        _Tab('Platos', Icons.no_meals, DishAvailabilityPage()),
+      ],
       // Owner screens (menu, users, daily report) come in the next iteration
       Role.owner => const [
-          _Tab('Pedidos', Icons.receipt_long, WaiterOrdersPage()),
-          _Tab('Cocina', Icons.soup_kitchen, KitchenBoardPage()),
-          _Tab('Platos', Icons.no_meals, DishAvailabilityPage()),
-        ],
+        _Tab('Pedidos', Icons.receipt_long, WaiterOrdersPage()),
+        _Tab('Cocina', Icons.soup_kitchen, KitchenBoardPage()),
+        _Tab('Platos', Icons.no_meals, DishAvailabilityPage()),
+      ],
     };
     final index = _index.clamp(0, tabs.length - 1);
 

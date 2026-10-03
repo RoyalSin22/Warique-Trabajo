@@ -35,14 +35,17 @@ class _SessionGate extends ConsumerWidget {
       // The key rebuilds every screen (and its providers' consumers) for a new user
       AsyncData(value: final active?) => HomePage(key: ValueKey(active.token)),
       AsyncError(:final error) => Scaffold(
-          body: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        body: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
             ErrorRetryView(error: error, onRetry: ref.read(sessionProvider.notifier).retry),
             TextButton(
               onPressed: ref.read(sessionProvider.notifier).logout,
               child: const Text('Cambiar servidor o usuario'),
             ),
-          ]),
+          ],
         ),
+      ),
       _ => const Scaffold(body: Center(child: CircularProgressIndicator())),
     };
   }

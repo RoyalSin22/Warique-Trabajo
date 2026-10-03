@@ -16,10 +16,12 @@ void main() {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(ProviderScope(
-      overrides: sessionOverrides(role: Role.kitchen, http: http, realtime: realtime),
-      child: const MaterialApp(home: KitchenBoardPage()),
-    ));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: sessionOverrides(role: Role.kitchen, http: http, realtime: realtime),
+        child: const MaterialApp(home: KitchenBoardPage()),
+      ),
+    );
     await tester.pumpAndSettle();
   }
 
@@ -63,7 +65,12 @@ void main() {
 
     realtime.emit(
       RealtimeEvent.orderUpdated,
-      orderJson(id: 1, status: 'CANCELLED', cancelReason: 'cliente se retiró', updatedAt: '2026-10-03T15:03:00.000Z'),
+      orderJson(
+        id: 1,
+        status: 'CANCELLED',
+        cancelReason: 'cliente se retiró',
+        updatedAt: '2026-10-03T15:03:00.000Z',
+      ),
     );
     await tester.pumpAndSettle();
 

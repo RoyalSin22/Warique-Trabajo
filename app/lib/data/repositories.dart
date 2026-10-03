@@ -25,15 +25,16 @@ class MenuRepository {
   final ApiClient _api;
 
   /// Active dishes of active categories, ordered by category and name (server side).
-  Future<List<Dish>> dishes() async =>
-      [for (final json in await _api.get('/dishes') as List) Dish.fromJson(json as Json)];
+  Future<List<Dish>> dishes() async => [
+    for (final json in await _api.get('/dishes') as List) Dish.fromJson(json as Json),
+  ];
 
-  Future<List<DiningTable>> tables() async =>
-      [for (final json in await _api.get('/tables') as List) DiningTable.fromJson(json as Json)];
+  Future<List<DiningTable>> tables() async => [
+    for (final json in await _api.get('/tables') as List) DiningTable.fromJson(json as Json),
+  ];
 
-  Future<Dish> setAvailability(int dishId, bool isAvailable) async => Dish.fromJson(
-        await _api.patch('/dishes/$dishId/availability', {'isAvailable': isAvailable}) as Json,
-      );
+  Future<Dish> setAvailability(int dishId, bool isAvailable) async =>
+      Dish.fromJson(await _api.patch('/dishes/$dishId/availability', {'isAvailable': isAvailable}) as Json);
 
   Future<int> resetAvailability() async =>
       (await _api.post('/dishes/availability/reset') as Json)['updated'] as int;
@@ -47,10 +48,10 @@ class NewOrderItem {
   final String? notes;
 
   Json toJson() => {
-        'dishId': dishId,
-        'quantity': quantity,
-        if (notes != null && notes!.trim().isNotEmpty) 'notes': notes!.trim(),
-      };
+    'dishId': dishId,
+    'quantity': quantity,
+    if (notes != null && notes!.trim().isNotEmpty) 'notes': notes!.trim(),
+  };
 }
 
 class OrdersRepository {
@@ -60,9 +61,14 @@ class OrdersRepository {
 
   /// Today's orders (business day computed by the server), oldest first.
   Future<List<Order>> today({List<OrderStatus>? statuses}) async {
-    final json = await _api.get('/orders', query: {
-      if (statuses != null && statuses.isNotEmpty) 'status': statuses.map((s) => s.api).join(','),
-    }) as List;
+    final json =
+        await _api.get(
+              '/orders',
+              query: {
+                if (statuses != null && statuses.isNotEmpty) 'status': statuses.map((s) => s.api).join(','),
+              },
+            )
+            as List;
     return [for (final order in json) Order.fromJson(order as Json)];
   }
 

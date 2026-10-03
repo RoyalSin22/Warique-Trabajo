@@ -7,17 +7,22 @@ import '../support/fixtures.dart';
 
 void main() {
   test('parses a detail response from the backend', () {
-    final order = Order.fromJson(orderJson(payments: [
-      {
-        'id': 1,
-        'method': 'CASH',
-        'amount': '20',
-        'amountReceived': '50',
-        'changeGiven': '30',
-        'operationNumber': null,
-        'createdAt': '2026-10-03T15:05:00.000Z',
-      },
-    ], paymentStatus: 'PARTIAL'));
+    final order = Order.fromJson(
+      orderJson(
+        payments: [
+          {
+            'id': 1,
+            'method': 'CASH',
+            'amount': '20',
+            'amountReceived': '50',
+            'changeGiven': '30',
+            'operationNumber': null,
+            'createdAt': '2026-10-03T15:05:00.000Z',
+          },
+        ],
+        paymentStatus: 'PARTIAL',
+      ),
+    );
 
     expect(order.target, 'Mesa 3');
     expect(order.total, Money.parse('40'));
@@ -75,7 +80,9 @@ void main() {
     });
 
     test('drops cached payments when the order changed', () {
-      final newer = Order.fromJson(orderJson(paymentStatus: 'PARTIAL', updatedAt: '2026-10-03T15:10:00.000Z'));
+      final newer = Order.fromJson(
+        orderJson(paymentStatus: 'PARTIAL', updatedAt: '2026-10-03T15:10:00.000Z'),
+      );
       expect(withPayments.mergeWith(newer).payments, isNull);
     });
   });
