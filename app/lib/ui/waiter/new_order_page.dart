@@ -8,6 +8,7 @@ import '../../models/order.dart';
 import '../../state/menu.dart';
 import '../../state/session.dart';
 import '../widgets/common.dart';
+import '../widgets/text_controllers.dart';
 import 'cart.dart';
 
 /// Builds a new order. Pops with the created [Order].
@@ -41,28 +42,29 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
   }
 
   Future<void> _editNote(Dish dish) async {
-    final controller = TextEditingController(text: _cart.noteOf(dish.id));
     final note = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Nota: ${dish.name}'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 150,
-          decoration: const InputDecoration(hintText: 'Ej.: sin ají, bien cocido'),
-          onSubmitted: (value) => Navigator.pop(context, value),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Guardar'),
+      builder: (_) => WithTextControllers(
+        initialTexts: [_cart.noteOf(dish.id)],
+        builder: (context, controllers) => AlertDialog(
+          title: Text('Nota: ${dish.name}'),
+          content: TextField(
+            controller: controllers.single,
+            autofocus: true,
+            maxLength: 150,
+            decoration: const InputDecoration(hintText: 'Ej.: sin ají, bien cocido'),
+            onSubmitted: (value) => Navigator.pop(context, value),
           ),
-        ],
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, controllers.single.text),
+              child: const Text('Guardar'),
+            ),
+          ],
+        ),
       ),
     );
-    controller.dispose();
     if (note != null) setState(() => _cart.setNote(dish.id, note));
   }
 

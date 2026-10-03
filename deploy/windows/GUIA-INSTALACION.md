@@ -70,8 +70,14 @@ Parámetros útiles: `-MySqlService MySQL84` si hay más de un MySQL, `-Port 300
 
 ## 4. Operación diaria (dueño)
 
-- **Al abrir:** en *Platos*, toca *Habilitar todos* para quitar los agotados del día anterior.
-- **Al cerrar:** concilia los pagos Yape/Plin (número de operación) con tu app del banco.
+- **Al abrir:** en *Gestión → Menú*, toca el botón de *Habilitar todos* (flecha circular) para quitar
+  los agotados del día anterior.
+- **Al cerrar:** en la pestaña *Cierre* revisa ventas, cobrado y por cobrar. En *Pagos del día* filtra
+  por Yape o Plin y compara cada N.° de operación con tu app del banco (el botón copia el número).
+- **Respaldo:** la tarjeta de arriba en *Cierre* sale **verde** si el respaldo de anoche se hizo y se
+  copió fuera de la PC; si sale **roja**, avisa a soporte ese mismo día.
+- **Personal:** en *Gestión → Usuarios* creas las cuentas de mozos y cocina, restableces claves y
+  desactivas a quien ya no trabaja (su sesión se cierra al instante).
 - **La PC debe quedar encendida** durante la atención. Si se reinicia, Warique vuelve solo en
   1 o 2 minutos; los celulares se reconectan solos (punto verde arriba a la derecha).
 - **Punto rojo "Sin conexión"** en los celulares: revisa que la PC esté encendida y en el Wi-Fi.

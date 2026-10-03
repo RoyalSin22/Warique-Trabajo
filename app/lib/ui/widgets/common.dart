@@ -5,6 +5,7 @@ import '../../core/api_exception.dart';
 import '../../models/order.dart';
 import '../../state/realtime.dart';
 import '../../state/session.dart';
+import '../owner/users_admin_page.dart' show showChangeOwnPasswordDialog;
 
 String errorMessage(Object error) =>
     error is ApiException ? error.message : 'Ocurrió un error inesperado. Intenta de nuevo.';
@@ -123,6 +124,10 @@ class LogoutButton extends ConsumerWidget {
       tooltip: user.fullName,
       itemBuilder: (context) => [
         PopupMenuItem(enabled: false, child: Text('${user.fullName} · ${user.role.label}')),
+        PopupMenuItem(
+          onTap: () => showChangeOwnPasswordDialog(context, ref),
+          child: const Row(children: [Icon(Icons.key), SizedBox(width: 8), Text('Cambiar contraseña')]),
+        ),
         PopupMenuItem(
           onTap: () => ref.read(sessionProvider.notifier).logout(),
           child: const Row(children: [Icon(Icons.logout), SizedBox(width: 8), Text('Cerrar sesión')]),

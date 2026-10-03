@@ -81,4 +81,37 @@ export class ReportsService {
       })),
     };
   }
+
+  /**
+   * Every payment registered that day, oldest first: the owner reconciles Yape/Plin operation
+   * numbers against the bank app and counts the cash at closing time.
+   */
+  async payments(date?: string) {
+    const { date: day, start, end } = businessDayRange(date, this.utcOffsetMinutes);
+    const rows = await this.prisma.payment.findMany({
+      where: { createdAt: { gte: start, lt: end } },
+      select: {
+        id: true,
+        orderId: true,
+        method: true,
+        amount: true,
+        amountReceived: true,
+        changeGiven: true,
+        operationNumber: true,
+        createdAt: true,
+        registeredUser: { select: { fullName: true } },
+        order: { select: { orderType: true, customerName: true, table: { select: { label: true } } } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    return {
+      date: day,
+      payments: rows.map(({ registeredUser, order, ...payment }) => ({
+        ...payment,
+        registeredBy: registeredUser.fullName,
+        target: order.table?.label ?? order.customerName ?? null,
+        orderType: order.orderType,
+      })),
+    };
+  }
 }

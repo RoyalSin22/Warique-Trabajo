@@ -125,6 +125,13 @@ function Invoke-MySqlQuery([string]$MySqlBinDir, [string]$OptionFile, [string]$Q
     return $result.StdOut.Trim()
 }
 
+# Adds or replaces KEY=value in a .env file, keeping every other line
+function Set-EnvFileValue([string]$Path, [string]$Key, [string]$Value) {
+    $lines = @(Get-Content -LiteralPath $Path -Encoding UTF8 | Where-Object { $_ -notmatch "^$([regex]::Escape($Key))=" })
+    $lines += "$Key=$Value"
+    Write-Utf8File $Path (($lines -join "`r`n") + "`r`n")
+}
+
 function Get-DeployConfigPath([string]$InstallDir) { Join-Path $InstallDir 'config\deploy.json' }
 
 function Get-DeployConfig([string]$InstallDir) {

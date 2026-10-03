@@ -17,6 +17,9 @@ class AuthRepository {
   }
 
   Future<AppUser> me() async => AppUser.fromJson(await _api.get('/auth/me') as Json);
+
+  Future<void> changeOwnPassword(String currentPassword, String newPassword) =>
+      _api.patch('/auth/password', {'currentPassword': currentPassword, 'newPassword': newPassword});
 }
 
 class MenuRepository {

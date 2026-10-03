@@ -46,6 +46,13 @@ const _knownMessages = <String, String>{
   'Order not found': 'El pedido no existe.',
   'Dish not found': 'El plato no existe.',
   'Current password is incorrect': 'La contraseña actual es incorrecta.',
+  'You cannot deactivate or demote your own account':
+      'No puedes desactivar tu propia cuenta ni quitarte el rol de dueño.',
+  'The table has open orders': 'La mesa tiene pedidos abiertos. Entrégalos o cancélalos primero.',
+  'A record with the same unique value already exists': 'Ya existe uno con ese nombre.',
+  'Category does not exist or is inactive': 'La categoría no existe o está desactivada.',
+  'Related record does not exist': 'El registro relacionado ya no existe.',
+  'Record not found': 'El registro ya no existe.',
 };
 
 String translateServerMessage(int statusCode, String? serverMessage) {
@@ -55,6 +62,9 @@ String translateServerMessage(int statusCode, String? serverMessage) {
     // "Amount exceeds the pending balance of S/ 12.00"
     final balance = RegExp(r'pending balance of (S/ [\d.]+)').firstMatch(serverMessage);
     if (balance != null) return 'El monto supera el saldo pendiente (${balance.group(1)}).';
+    if (serverMessage.startsWith('username must be')) {
+      return 'Usuario inválido: 3 a 50 caracteres en minúsculas, números, ".", "_" o "-".';
+    }
     if (serverMessage.startsWith('Cannot change order status')) {
       return 'El pedido ya cambió de estado. Actualiza la lista.';
     }

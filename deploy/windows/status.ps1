@@ -31,7 +31,7 @@ try {
     Show $false "API: no responde en el puerto $($config.port) ($($_.Exception.Message))"
 }
 
-$statusFile = Join-Path $config.backupDir 'ultimo-respaldo.json'
+$statusFile = Join-Path $config.logDir 'ultimo-respaldo.json'
 if (Test-Path -LiteralPath $statusFile) {
     $last = Get-Content -LiteralPath $statusFile -Raw -Encoding UTF8 | ConvertFrom-Json
     $age = (Get-Date) - [datetime]$last.time

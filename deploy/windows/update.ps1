@@ -44,6 +44,9 @@ Write-Step 'Respaldo previo'
 & (Join-Path $PSScriptRoot 'backup.ps1') -InstallDir $InstallDir -Tag 'antes-de-actualizar'
 if ($LASTEXITCODE -eq 1) { throw 'El respaldo fallo; no se actualizara. Revisa logs\backup.log.' }
 
+# Settings introduced by newer versions (idempotent)
+Set-EnvFileValue (Join-Path $InstallDir 'config\.env') 'BACKUP_STATUS_FILE' (Join-Path $config.logDir 'ultimo-respaldo.json')
+
 Write-Step 'Reemplazando la aplicacion'
 Stop-Service -Name $config.serviceName
 if (Test-Path -LiteralPath $previousDir) { Remove-Item -LiteralPath $previousDir -Recurse -Force }

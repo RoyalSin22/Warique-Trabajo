@@ -216,6 +216,7 @@ try {
 
     $encodedPassword = [Uri]::EscapeDataString($appPassword)
     Write-EnvFile "mysql://warique_app:$encodedPassword@localhost:$MySqlPort/$Database"
+    Set-EnvFileValue $envFile 'BACKUP_STATUS_FILE' (Join-Path $paths.Logs 'ultimo-respaldo.json')
     New-MySqlOptionFile $backupOptionFile 'warique_backup' $backupPassword $MySqlPort
     $appPassword = $null
     $backupPassword = $null

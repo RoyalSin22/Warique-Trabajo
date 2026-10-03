@@ -24,7 +24,8 @@ $ErrorActionPreference = 'Stop'
 $config = Get-DeployConfig $InstallDir
 New-Item -ItemType Directory -Force -Path $config.logDir, $config.backupDir | Out-Null
 $logFile = Join-Path $config.logDir 'backup.log'
-$statusFile = Join-Path $config.backupDir 'ultimo-respaldo.json'
+# In logs\ (not backups\): the service account may read it to show the owner the backup status
+$statusFile = Join-Path $config.logDir 'ultimo-respaldo.json'
 
 function Write-BackupLog([string]$Level, [string]$Message) {
     $line = '{0} [{1}] {2}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level, $Message

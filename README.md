@@ -80,6 +80,8 @@ are for a development machine.
 | PATCH | `/orders/:id/status` | per transition (see `orders/order-status.ts`) |
 | POST | `/orders/:id/payments` | WAITER, OWNER |
 | GET | `/reports/daily?date=YYYY-MM-DD` | OWNER |
+| GET | `/reports/payments?date=YYYY-MM-DD` | OWNER (reconciliation list) |
+| GET | `/reports/backup-status` | OWNER (reads `BACKUP_STATUS_FILE`) |
 
 Money values are returned as strings (`"18.50"`) to avoid floating-point rounding.
 
@@ -96,11 +98,13 @@ Requirements: Flutter 3.44+ (tested with 3.47.6 / Dart 3.13). Screens in this it
 |---|---|
 | WAITER | Today's orders (ready / to collect / in kitchen), new order (table or takeaway, sold-out dishes blocked live), order detail, deliver, cancel, payment (cash with change, Yape/Plin with operation number) |
 | KITCHEN | Live board (pending / in preparation, FIFO, late orders in red, alert on cancellations), sold-out switches |
-| OWNER | Both of the above. Menu, users and daily report screens are the next iteration |
+| OWNER | Waiter and kitchen screens, plus **Cierre** (daily sales, collections per method, top dishes, every payment with its Yape/Plin operation number, backup health) and **Gestión** (menu with categories, prices and sold-out switches; tables; staff accounts and password resets) |
+| All | Change own password from the account menu |
 
 ```powershell
 cd app
 flutter pub get
+dart format lib test                 # code style (110 columns, analysis_options.yaml)
 flutter analyze
 flutter test                         # unit + widget tests, includes a parity check against
                                      # backend/src/orders/order-status.ts

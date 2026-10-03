@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'state/session.dart';
@@ -19,6 +20,10 @@ class WariqueApp extends StatelessWidget {
         useMaterial3: true,
         visualDensity: VisualDensity.standard,
       ),
+      // Spanish for Material texts (date picker, tooltips, copy/paste menu)
+      locale: const Locale('es', 'PE'),
+      supportedLocales: const [Locale('es', 'PE'), Locale('es')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       home: const _SessionGate(),
     );
   }
