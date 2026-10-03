@@ -18,10 +18,11 @@ void main() {
   Future<void> pump(
     WidgetTester tester,
     Widget page,
-    (int, Object?) Function(http.Request request) handler,
-  ) async {
+    (int, Object?) Function(http.Request request) handler, {
+    Size size = const Size(400, 800),
+  }) async {
     server = RecordingHttp(handler);
-    tester.view.physicalSize = const Size(400, 800);
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
@@ -116,7 +117,12 @@ void main() {
     };
 
     testWidgets('shows totals, warns about the backup and filters payments to reconcile', (tester) async {
-      await pump(tester, const ReportPage(), reportApi);
+      // Phone width; tall enough to show the whole closing without fighting nested scrollables
+      await pump(tester, const ReportPage(), reportApi, size: const Size(400, 1800));
+      // The day's list, not the tab bar or the page view of the tabs
+      final dayList = find
+          .descendant(of: find.byType(RefreshIndicator), matching: find.byType(Scrollable))
+          .first;
 
       expect(find.text('S/ 110.50'), findsOneWidget); // sales
       expect(find.text('S/ 20.00'), findsOneWidget); // pending
@@ -124,15 +130,15 @@ void main() {
       expect(find.textContaining('NO se copió'), findsOneWidget);
       expect(find.textContaining('Hoy, '), findsOneWidget);
 
-      await tester.scrollUntilVisible(find.text('Pagos del día'), 200);
+      await tester.scrollUntilVisible(find.widgetWithText(ChoiceChip, 'Yape'), 200, scrollable: dayList);
       await tester.tap(find.widgetWithText(ChoiceChip, 'Yape'));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.textContaining('Total (1 pagos)'), 200);
+      await tester.scrollUntilVisible(find.textContaining('Total (1 pagos)'), 200, scrollable: dayList);
       expect(find.textContaining('Op. 889911'), findsOneWidget);
       expect(find.textContaining('vuelto S/ 9.50'), findsNothing); // cash payment filtered out
 
       // Previous day loads that date
-      await tester.scrollUntilVisible(find.byTooltip('Día anterior'), -200);
+      await tester.scrollUntilVisible(find.byTooltip('Día anterior'), -200, scrollable: dayList);
       await tester.tap(find.byTooltip('Día anterior'));
       await tester.pumpAndSettle();
       final dates = server.requests

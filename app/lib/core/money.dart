@@ -53,9 +53,14 @@ class Money implements Comparable<Money> {
     return '$sign${abs ~/ 100}.${(abs % 100).toString().padLeft(2, '0')}';
   }
 
-  /// "S/ 18.50"
+  /// "S/ 18.50", "S/ 24,397.50" (thousands separated, as receipts in Peru)
   @override
-  String toString() => 'S/ $plain';
+  String toString() {
+    final sign = cents < 0 ? '-' : '';
+    final abs = cents.abs();
+    final whole = (abs ~/ 100).toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
+    return 'S/ $sign$whole.${(abs % 100).toString().padLeft(2, '0')}';
+  }
 
   @override
   int compareTo(Money other) => cents.compareTo(other.cents);

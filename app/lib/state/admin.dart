@@ -33,3 +33,8 @@ final paymentsReportProvider = FutureProvider.autoDispose.family<List<PaymentRec
 final backupStatusProvider = FutureProvider.autoDispose<BackupStatus>(
   (ref) => ref.watch(adminRepositoryProvider).backupStatus(),
 );
+
+/// Keyed by `(from, to)` business days, `YYYY-MM-DD`.
+final salesSummaryProvider = FutureProvider.autoDispose.family<SalesSummary, ({String from, String to})>(
+  (ref, range) => ref.watch(adminRepositoryProvider).summary(range.from, range.to),
+);

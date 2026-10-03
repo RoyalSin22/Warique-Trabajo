@@ -189,3 +189,90 @@ class BackupStatus {
   final String? file;
   final String? error;
 }
+
+/// Owner dashboard for a range of business days (`GET /reports/summary`).
+class SalesSummary {
+  const SalesSummary({
+    required this.from,
+    required this.to,
+    required this.sales,
+    required this.orders,
+    required this.averageTicket,
+    required this.collected,
+    required this.daysWithSales,
+    required this.bestDay,
+    required this.days,
+    required this.byWeekday,
+    required this.byHour,
+    required this.topDishes,
+    required this.byMethod,
+  });
+
+  factory SalesSummary.fromJson(Map<String, dynamic> json) {
+    final totals = json['totals'] as Map<String, dynamic>;
+    final best = totals['bestDay'] as Map<String, dynamic>?;
+    return SalesSummary(
+      from: DateTime.parse(json['from'] as String),
+      to: DateTime.parse(json['to'] as String),
+      sales: Money.parse(totals['sales']),
+      orders: totals['orders'] as int,
+      averageTicket: Money.parse(totals['averageTicket']),
+      collected: Money.parse(totals['collected']),
+      daysWithSales: totals['daysWithSales'] as int,
+      bestDay: best == null
+          ? null
+          : (date: DateTime.parse(best['date'] as String), sales: Money.parse(best['sales'])),
+      days: [
+        for (final row in json['days'] as List)
+          (
+            date: DateTime.parse(row['date'] as String),
+            sales: Money.parse(row['sales']),
+            orders: row['orders'] as int,
+          ),
+      ],
+      byWeekday: [
+        for (final row in json['byWeekday'] as List)
+          (
+            weekday: row['weekday'] as int,
+            openDays: row['openDays'] as int,
+            averageSales: Money.parse(row['averageSales']),
+          ),
+      ],
+      byHour: [
+        for (final row in json['byHour'] as List)
+          (hour: row['hour'] as int, orders: row['orders'] as int, sales: Money.parse(row['sales'])),
+      ],
+      topDishes: [
+        for (final row in json['topDishes'] as List)
+          (
+            name: row['dishName'] as String,
+            quantity: row['quantity'] as int,
+            revenue: Money.parse(row['revenue']),
+          ),
+      ],
+      byMethod: {
+        for (final row in json['byMethod'] as List)
+          PaymentMethod.fromApi(row['method'] as String): (
+            count: row['count'] as int,
+            amount: Money.parse(row['amount']),
+          ),
+      },
+    );
+  }
+
+  final DateTime from;
+  final DateTime to;
+  final Money sales;
+  final int orders;
+  final Money averageTicket;
+  final Money collected;
+  final int daysWithSales;
+  final ({DateTime date, Money sales})? bestDay;
+  final List<({DateTime date, Money sales, int orders})> days;
+
+  /// ISO weekday (1 = lunes). Average over the days that had sales.
+  final List<({int weekday, int openDays, Money averageSales})> byWeekday;
+  final List<({int hour, int orders, Money sales})> byHour;
+  final List<({String name, int quantity, Money revenue})> topDishes;
+  final Map<PaymentMethod, ({int count, Money amount})> byMethod;
+}

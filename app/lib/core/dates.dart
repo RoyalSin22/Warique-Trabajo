@@ -31,3 +31,26 @@ String ageLabel(double hours) {
   if (hours < 48) return 'hace ${hours.round()} h';
   return 'hace ${(hours / 24).floor()} días';
 }
+
+const _weekdayShort = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+const _weekdayNames = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const _monthShort = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'set', 'oct', 'nov', 'dic'];
+
+/// "L".."D" for ISO weekday 1..7
+String weekdayInitial(int weekday) => _weekdayShort[weekday - 1];
+
+/// "Lunes".."Domingo" for ISO weekday 1..7
+String weekdayName(int weekday) => _weekdayNames[weekday - 1];
+
+/// "3 oct"
+String shortDayLabel(DateTime date) => '${date.day} ${_monthShort[date.month - 1]}';
+
+/// "sáb 3 oct"
+String mediumDayLabel(DateTime date) =>
+    '${_weekdays[date.weekday - 1].substring(0, 3)} ${date.day} ${_monthShort[date.month - 1]}';
+
+/// "los sábados", "los viernes": only sábado and domingo change in the plural
+String weekdayPlural(int weekday) {
+  final name = _weekdayNames[weekday - 1].toLowerCase();
+  return weekday >= 6 ? '${name}s' : name;
+}

@@ -69,3 +69,30 @@ describe('ReportsService.payments', () => {
     expect(report.payments[0]).not.toHaveProperty('registeredUser');
   });
 });
+
+describe('ReportsService.summary', () => {
+  const prisma = {
+    order: { findMany: jest.fn().mockResolvedValue([]) },
+    orderItem: { groupBy: jest.fn().mockResolvedValue([]) },
+    payment: { groupBy: jest.fn().mockResolvedValue([]) },
+  };
+  const service = new ReportsService(
+    prisma as unknown as PrismaService,
+    { get: () => -300 } as unknown as ConfigService,
+  );
+
+  it('queries the UTC window of the local days and excludes cancelled orders', async () => {
+    await service.summary('2026-10-01', '2026-10-03');
+    const where = prisma.order.findMany.mock.calls[0][0].where;
+    expect(where.createdAt).toEqual({
+      gte: new Date('2026-10-01T05:00:00.000Z'),
+      lt: new Date('2026-10-04T05:00:00.000Z'),
+    });
+    expect(where.status).toEqual({ not: OrderStatus.CANCELLED });
+  });
+
+  it('rejects inverted and too long ranges', async () => {
+    await expect(service.summary('2026-10-03', '2026-10-01')).rejects.toThrow('from must be on or before to');
+    await expect(service.summary('2025-01-01', '2026-10-01')).rejects.toThrow('366');
+  });
+});

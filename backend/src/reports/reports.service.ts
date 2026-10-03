@@ -1,10 +1,14 @@
 // backend/src/reports/reports.service.ts
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OrderStatus } from '@prisma/client';
 import { businessDayRange } from '../common/utils/business-day';
 import { fromCents, toCents } from '../common/utils/money';
 import { PrismaService } from '../prisma/prisma.service';
+import { buildSummary, dayRange } from './summary';
+
+/** Longest range the dashboard accepts (one year). */
+const MAX_SUMMARY_DAYS = 366;
 
 @Injectable()
 export class ReportsService {
@@ -113,5 +117,54 @@ export class ReportsService {
         orderType: order.orderType,
       })),
     };
+  }
+
+  /** Owner dashboard for a range of business days (charts in the app's "Cierre" screen). */
+  async summary(from: string, to: string) {
+    const start = businessDayRange(from, this.utcOffsetMinutes).start;
+    const end = businessDayRange(to, this.utcOffsetMinutes).end;
+    const days = dayRange(from, to);
+    if (days.length === 0) throw new BadRequestException('from must be on or before to');
+    if (days.length > MAX_SUMMARY_DAYS) {
+      throw new BadRequestException(`The range cannot exceed ${MAX_SUMMARY_DAYS} days`);
+    }
+
+    const inRange = { createdAt: { gte: start, lt: end } };
+    const validOrders = { ...inRange, status: { not: OrderStatus.CANCELLED } };
+
+    // A year of a small restaurant is a few tens of thousands of rows with two columns:
+    // aggregating in the API keeps the time-zone logic in one tested place (no SQL date math)
+    const [orders, dishes, payments] = await Promise.all([
+      this.prisma.order.findMany({ where: validOrders, select: { createdAt: true, total: true } }),
+      this.prisma.orderItem.groupBy({
+        by: ['dishId', 'dishName'],
+        where: { order: validOrders },
+        _sum: { quantity: true, subtotal: true },
+        orderBy: { _sum: { quantity: 'desc' } },
+        take: 10,
+      }),
+      this.prisma.payment.groupBy({
+        by: ['method'],
+        where: inRange,
+        _count: { _all: true },
+        _sum: { amount: true },
+      }),
+    ]);
+
+    return buildSummary({
+      days,
+      utcOffsetMinutes: this.utcOffsetMinutes,
+      orders,
+      dishes: dishes.map((row) => ({
+        dishName: row.dishName,
+        quantity: row._sum.quantity ?? 0,
+        revenueCents: toCents(row._sum.subtotal),
+      })),
+      payments: payments.map((row) => ({
+        method: row.method,
+        count: row._count._all,
+        amountCents: toCents(row._sum.amount),
+      })),
+    });
   }
 }

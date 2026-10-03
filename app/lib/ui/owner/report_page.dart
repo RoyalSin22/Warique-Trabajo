@@ -12,6 +12,7 @@ import '../../models/order.dart';
 import '../../state/admin.dart';
 import '../../state/realtime.dart';
 import '../widgets/common.dart';
+import 'stats_view.dart';
 
 /// Daily closing: sales, collections per method, payments to reconcile and backup health.
 class ReportPage extends ConsumerStatefulWidget {
@@ -53,6 +54,7 @@ class _ReportPageState extends ConsumerState<ReportPage> {
     ref.invalidate(dailyReportProvider(key));
     ref.invalidate(paymentsReportProvider(key));
     ref.invalidate(backupStatusProvider);
+    ref.invalidate(salesSummaryProvider); // every range of the Estadísticas tab
   }
 
   void _moveDay(int days) => setState(() => _day = _day.add(Duration(days: days)));
@@ -73,62 +75,76 @@ class _ReportPageState extends ConsumerState<ReportPage> {
     final report = ref.watch(dailyReportProvider(key));
     final payments = ref.watch(paymentsReportProvider(key));
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Cierre del día'),
-        actions: [
-          const ConnectionIndicator(),
-          IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh), tooltip: 'Actualizar'),
-          const LogoutButton(),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () async => _refresh(),
-        child: ListView(
-          // Readable column on tablets and the PC; full width on phones
-          padding: EdgeInsets.fromLTRB(12 + _sideGutter(context), 4, 12 + _sideGutter(context), 24),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Cierre'),
+          actions: [
+            const ConnectionIndicator(),
+            IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh), tooltip: 'Actualizar'),
+            const LogoutButton(),
+          ],
+          bottom: const TabBar(
+            tabs: [
+              Tab(icon: Icon(Icons.today), text: 'Cierre del día'),
+              Tab(icon: Icon(Icons.insights), text: 'Estadísticas'),
+            ],
+          ),
+        ),
+        body: TabBarView(
           children: [
-            Row(
-              children: [
-                IconButton(
-                  onPressed: () => _moveDay(-1),
-                  icon: const Icon(Icons.chevron_left),
-                  tooltip: 'Día anterior',
-                ),
-                Expanded(
-                  child: TextButton.icon(
-                    onPressed: _pickDay,
-                    icon: const Icon(Icons.calendar_today, size: 18),
-                    label: Text(_isToday ? 'Hoy, ${longDayLabel(_day)}' : longDayLabel(_day)),
+            RefreshIndicator(
+              onRefresh: () async => _refresh(),
+              child: ListView(
+                // Readable column on tablets and the PC; full width on phones
+                padding: EdgeInsets.fromLTRB(12 + _sideGutter(context), 4, 12 + _sideGutter(context), 24),
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => _moveDay(-1),
+                        icon: const Icon(Icons.chevron_left),
+                        tooltip: 'Día anterior',
+                      ),
+                      Expanded(
+                        child: TextButton.icon(
+                          onPressed: _pickDay,
+                          icon: const Icon(Icons.calendar_today, size: 18),
+                          label: Text(_isToday ? 'Hoy, ${longDayLabel(_day)}' : longDayLabel(_day)),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: _isToday ? null : () => _moveDay(1),
+                        icon: const Icon(Icons.chevron_right),
+                        tooltip: 'Día siguiente',
+                      ),
+                    ],
                   ),
-                ),
-                IconButton(
-                  onPressed: _isToday ? null : () => _moveDay(1),
-                  icon: const Icon(Icons.chevron_right),
-                  tooltip: 'Día siguiente',
-                ),
-              ],
+                  const _BackupCard(),
+                  const SizedBox(height: 8),
+                  switch (report) {
+                    AsyncValue(value: final data?) => _ReportBody(report: data),
+                    AsyncError(:final error) => ErrorRetryView(error: error, onRetry: _refresh),
+                    _ => const Padding(
+                      padding: EdgeInsets.all(32),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  },
+                  const SizedBox(height: 16),
+                  switch (payments) {
+                    AsyncValue(value: final list?) => _PaymentsSection(
+                      payments: list,
+                      filter: _methodFilter,
+                      onFilter: (method) => setState(() => _methodFilter = method),
+                    ),
+                    AsyncError(:final error) => ErrorRetryView(error: error, onRetry: _refresh),
+                    _ => const SizedBox.shrink(),
+                  },
+                ],
+              ),
             ),
-            const _BackupCard(),
-            const SizedBox(height: 8),
-            switch (report) {
-              AsyncValue(value: final data?) => _ReportBody(report: data),
-              AsyncError(:final error) => ErrorRetryView(error: error, onRetry: _refresh),
-              _ => const Padding(
-                padding: EdgeInsets.all(32),
-                child: Center(child: CircularProgressIndicator()),
-              ),
-            },
-            const SizedBox(height: 16),
-            switch (payments) {
-              AsyncValue(value: final list?) => _PaymentsSection(
-                payments: list,
-                filter: _methodFilter,
-                onFilter: (method) => setState(() => _methodFilter = method),
-              ),
-              AsyncError(:final error) => ErrorRetryView(error: error, onRetry: _refresh),
-              _ => const SizedBox.shrink(),
-            },
+            const StatsView(),
           ],
         ),
       ),

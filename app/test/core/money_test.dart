@@ -33,6 +33,10 @@ void main() {
 
   test('formats for display and JSON', () {
     expect(Money.parse('40').toString(), 'S/ 40.00');
+    expect(Money.parse('24397.5').toString(), 'S/ 24,397.50');
+    expect(Money.parse('1234567').toString(), 'S/ 1,234,567.00');
+    expect(const Money(-123456).toString(), 'S/ -1,234.56');
+    expect(Money.parse('24397.5').plain, '24397.50'); // inputs never get separators
     expect(Money.parse('0.5').plain, '0.50');
     expect(const Money(-250).plain, '-2.50');
     expect(Money.parse('18.50').toJson(), 18.5);

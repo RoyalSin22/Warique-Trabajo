@@ -81,6 +81,7 @@ are for a development machine.
 | POST | `/orders/:id/payments` | WAITER, OWNER (accepts `Idempotency-Key`) |
 | GET | `/reports/daily?date=YYYY-MM-DD` | OWNER |
 | GET | `/reports/payments?date=YYYY-MM-DD` | OWNER (reconciliation list) |
+| GET | `/reports/summary?from=YYYY-MM-DD&to=YYYY-MM-DD` | OWNER (dashboard, up to 366 days) |
 | GET | `/reports/backup-status` | OWNER (reads `BACKUP_STATUS_FILE`) |
 
 Money values are returned as strings (`"18.50"`) to avoid floating-point rounding.
@@ -104,7 +105,7 @@ Requirements: Flutter 3.44+ (tested with 3.47.6 / Dart 3.13). Screens in this it
 |---|---|
 | WAITER | Today's orders (ready / to collect / in kitchen), new order (or "another order for this table" from an order's detail) (table or takeaway, sold-out dishes blocked live), order detail, deliver, cancel, payment (cash with change, Yape/Plin with operation number) |
 | KITCHEN | Live board (pending / in preparation, FIFO, late orders in red, alert on cancellations), sold-out switches |
-| OWNER | Waiter and kitchen screens, plus **Cierre** (daily sales, collections per method, top dishes, every payment with its Yape/Plin operation number, backup health) and **Gestión** (menu with categories, prices and sold-out switches; tables; staff accounts and password resets; QR codes to connect staff phones) |
+| OWNER | Waiter and kitchen screens, plus **Cierre** (daily closing: collections per method, top dishes, every payment with its Yape/Plin operation number, backup health; **Estadísticas**: sales per day, weekday averages, top dishes by quantity or revenue, orders per hour and payment split for 7/30/90 days or this month, each chart with a table view) and **Gestión** (menu with categories, prices and sold-out switches; tables; staff accounts and password resets; QR codes to connect staff phones) |
 | All | Change own password from the account menu |
 
 ```powershell

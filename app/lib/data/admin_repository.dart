@@ -129,6 +129,9 @@ class AdminRepository {
     return [for (final row in json['payments'] as List) PaymentRecord.fromJson(row as _Json)];
   }
 
+  Future<SalesSummary> summary(String from, String to) async =>
+      SalesSummary.fromJson(await _api.get('/reports/summary', query: {'from': from, 'to': to}) as _Json);
+
   Future<BackupStatus> backupStatus() async =>
       BackupStatus.fromJson(await _api.get('/reports/backup-status') as _Json);
 }
