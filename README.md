@@ -63,6 +63,8 @@ are for a development machine.
    npx prisma validate
    npm test
    npm run db:seed             # creates the first OWNER
+   # Optional, EMPTY database only: menu, staff, 60 days of sales, supplies, expenses, cash counts
+   $env:DEMO_PASSWORD='...'; npm run db:demo   # accounts demo-duenio / demo-mozo / demo-cocina
    npm run start:dev
    ```
 
@@ -95,11 +97,18 @@ are for a development machine.
 | GET | `/expenses?date=YYYY-MM-DD`, `/expenses/:id` | OWNER |
 | POST | `/expenses` (optional `items`: supply purchase) | OWNER (accepts `Idempotency-Key`) |
 | PATCH | `/expenses/:id/void` (with `reason`) | OWNER |
+| POST | `/reports/export-link` (`kind`: `ventas` / `pagos` / `gastos` / `arqueos`, `from`, `to`) | OWNER: signed CSV link, valid 2 minutes |
+| GET | `/reports/export/:token` | public, the signed link is the credential (owner must still be active) |
 | GET | `/cash?date=YYYY-MM-DD` | OWNER |
 | POST | `/cash/open` (`openingAmount`), `/cash/close` (`countedAmount`, `notes`) | OWNER |
 
 Money values are returned as strings (`"18.50"`) to avoid floating-point rounding; stock
 quantities likewise (`"2.500"`, three decimals), computed in integer thousandths.
+
+**Accountant export (CSV).** UTF-8 with BOM, `,` separator, `.` decimals, plain numbers (no
+"S/"), one file per kind. Text that a spreadsheet would run as a formula (`=`, `+`, `-`, `@`) is
+prefixed with `'` (CSV injection). The download link is signed with a key derived from
+`JWT_SECRET` but different from the session key, so a link never works as a session token.
 
 **Supplies, expenses and cash count.**
 
@@ -132,7 +141,7 @@ Requirements: Flutter 3.44+ (tested with 3.47.6 / Dart 3.13). Screens in this it
 |---|---|
 | WAITER | Today's orders (ready / to collect / in kitchen), new order (or "another order for this table" from an order's detail) (table or takeaway, sold-out dishes blocked live), order detail, deliver, cancel, payment (cash with change, Yape/Plin with operation number) |
 | KITCHEN | Live board (pending / in preparation, FIFO, late orders in red, alert on cancellations), sold-out switches, **Insumos** (stock with "por comprar" list, counts, waste, use, history; low-stock count badge on the tab) |
-| OWNER | Waiter and kitchen screens, plus **Cierre** (daily closing: sales, collections, expenses and sales − expenses, **cash count** with the difference shown as "Cuadra" / "Faltan" / "Sobran", collections per method, top dishes, every payment with its Yape/Plin operation number, backup health; **Estadísticas**: sales per day, weekday averages, top dishes by quantity or revenue, orders per hour, payment split and expenses by category for 7/30/90 days or this month, each chart with a table view) and **Gestión** (**expenses** with optional supply lines, voiding with a reason; **supplies** with minimum stock alerts; menu with categories, prices and sold-out switches; tables; staff accounts and password resets; QR codes to connect staff phones) |
+| OWNER | Waiter and kitchen screens, plus **Cierre** (daily closing: sales, collections, expenses and sales − expenses, **cash count** with the difference shown as "Cuadra" / "Faltan" / "Sobran", collections per method, top dishes, every payment with its Yape/Plin operation number, backup health; **Estadísticas**: sales per day, weekday averages, top dishes by quantity or revenue, orders per hour, payment split and expenses by category for 7/30/90 days or this month, each chart with a table view) **Exportar para el contador** (CSV of daily sales, payments, expenses and cash counts for last month, this month or any range) and **Gestión** (**expenses** with optional supply lines, voiding with a reason; **supplies** with minimum stock alerts; menu with categories, prices and sold-out switches; tables; staff accounts and password resets; QR codes to connect staff phones) |
 | All | Change own password from the account menu |
 
 ```powershell

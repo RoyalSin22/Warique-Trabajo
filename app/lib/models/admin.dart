@@ -307,3 +307,17 @@ List<({ExpenseCategory category, Money amount})> _expensesByCategory(Object? row
   for (final row in rows as List? ?? const [])
     (category: ExpenseCategory.fromApi(row['category'] as String), amount: Money.parse(row['amount'])),
 ];
+
+/// Spreadsheets for the accountant (`POST /reports/export-link`).
+enum ExportKind {
+  ventas('ventas', 'Ventas por día', 'Pedidos, ventas, cobros por método, gastos y ventas − gastos'),
+  pagos('pagos', 'Pagos', 'Cada cobro con hora, método y N.° de operación Yape/Plin'),
+  gastos('gastos', 'Gastos', 'Cada gasto con categoría, detalle de insumos y anulaciones'),
+  arqueos('arqueos', 'Arqueos de caja', 'Fondo, lo que debía haber, lo contado y la diferencia');
+
+  const ExportKind(this.api, this.label, this.description);
+
+  final String api;
+  final String label;
+  final String description;
+}

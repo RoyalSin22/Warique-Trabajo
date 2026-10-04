@@ -16,6 +16,7 @@ import '../widgets/common.dart';
 import '../widgets/day_navigator.dart';
 import 'cash_card.dart';
 import 'expenses_page.dart';
+import 'export_sheet.dart';
 import 'stats_view.dart';
 
 /// Daily closing: sales, collections per method, payments to reconcile and backup health.
@@ -76,6 +77,11 @@ class _ReportPageState extends ConsumerState<ReportPage> {
           title: const Text('Cierre'),
           actions: [
             const ConnectionIndicator(),
+            IconButton(
+              onPressed: () => showExportSheet(context),
+              icon: const Icon(Icons.download),
+              tooltip: 'Exportar para el contador',
+            ),
             IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh), tooltip: 'Actualizar'),
             const LogoutButton(),
           ],

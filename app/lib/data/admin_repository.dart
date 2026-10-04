@@ -134,4 +134,14 @@ class AdminRepository {
 
   Future<BackupStatus> backupStatus() async =>
       BackupStatus.fromJson(await _api.get('/reports/backup-status') as _Json);
+
+  /// Signed download link (valid 2 minutes) for a CSV; the browser downloads it without the session.
+  Future<({String url, String fileName})> exportLink(
+    ExportKind kind, {
+    required String from,
+    required String to,
+  }) async {
+    final json = await _api.post('/reports/export-link', {'kind': kind.api, 'from': from, 'to': to}) as _Json;
+    return (url: json['url'] as String, fileName: json['fileName'] as String);
+  }
 }

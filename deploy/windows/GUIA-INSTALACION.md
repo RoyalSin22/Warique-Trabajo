@@ -111,6 +111,9 @@ Parámetros útiles: `-ActiveHoursStart 8 -ActiveHoursEnd 22 -BackupTime '18:30'
   de pescado). La cocina, en su pestaña *Insumos*, registra **conteos** (lo que hay realmente),
   **mermas** (lo que se malogró) y **usos**. Arriba aparece la lista *Por comprar*. Vender un plato
   **no** descuenta insumos: hacer un conteo al cierre mantiene el stock real.
+- **Para el contador:** en *Cierre* toca el botón de descarga (flecha hacia abajo), elige el periodo
+  (por defecto el mes anterior) y descarga: *Ventas por día*, *Pagos*, *Gastos* y *Arqueos de caja*.
+  Son archivos CSV que se abren con Excel o Google Sheets; en el celular quedan en *Descargas*.
 - **Ventas − gastos** en *Cierre* y *Estadísticas* es lo que entró menos lo que salió; no es la
   utilidad contable (una compra grande cuenta completa el día que se paga).
 - **Respaldo:** la tarjeta de arriba en *Cierre* sale **verde** si el respaldo de anoche se hizo y se
