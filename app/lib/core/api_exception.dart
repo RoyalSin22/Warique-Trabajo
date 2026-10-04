@@ -22,11 +22,7 @@ class ApiException implements Exception {
     final details = body is Map<String, dynamic> ? body : <String, dynamic>{};
     final rawMessage = details['message'];
     final serverMessage = rawMessage is List ? rawMessage.join('\n') : rawMessage?.toString();
-    return ApiException(
-      statusCode,
-      translateServerMessage(statusCode, serverMessage),
-      details: details,
-    );
+    return ApiException(statusCode, translateServerMessage(statusCode, serverMessage), details: details);
   }
 
   @override
@@ -39,8 +35,7 @@ const _knownMessages = <String, String>{
   'Some dishes are not available': 'Algunos platos ya no están disponibles. Se quitaron del pedido.',
   'The order was modified by someone else. Reload and try again':
       'Otra persona modificó este pedido. Se actualizó la información; revisa e intenta de nuevo.',
-  'Cannot cancel an order that already has payments':
-      'No se puede cancelar un pedido que ya tiene pagos.',
+  'Cannot cancel an order that already has payments': 'No se puede cancelar un pedido que ya tiene pagos.',
   'cancelReason is required to cancel an order': 'Indica el motivo de la cancelación.',
   'The order is already paid': 'El pedido ya está pagado.',
   'Cannot register a payment for a cancelled order': 'El pedido está cancelado.',
@@ -51,6 +46,26 @@ const _knownMessages = <String, String>{
   'Order not found': 'El pedido no existe.',
   'Dish not found': 'El plato no existe.',
   'Current password is incorrect': 'La contraseña actual es incorrecta.',
+  'You cannot deactivate or demote your own account':
+      'No puedes desactivar tu propia cuenta ni quitarte el rol de dueño.',
+  'The table has open orders': 'La mesa tiene pedidos abiertos. Entrégalos o cancélalos primero.',
+  'A record with the same unique value already exists': 'Ya existe uno con ese nombre.',
+  'Category does not exist or is inactive': 'La categoría no existe o está desactivada.',
+  'Related record does not exist': 'El registro relacionado ya no existe.',
+  'Record not found': 'El registro ya no existe.',
+  'The supply is inactive': 'El insumo está desactivado.',
+  'A purchase with supplies must use the INSUMOS category':
+      'Una compra con insumos debe ser del tipo Insumos.',
+  'Each supply can appear only once per purchase': 'Cada insumo puede ir una sola vez en la compra.',
+  'The purchase total must be greater than 0': 'El total de la compra debe ser mayor que 0.',
+  'An expense cannot be recorded for a future day': 'No se puede registrar un gasto en un día futuro.',
+  'The expense is already void': 'El gasto ya estaba anulado.',
+  'Expense not found': 'El gasto no existe.',
+  'Supply not found': 'El insumo no existe.',
+  'The cash count for this day is already closed':
+      'La caja de este día ya se cerró. Usa "Volver a contar" si hace falta.',
+  'Open the cash count with the change fund first': 'Primero abre la caja con el fondo de cambio.',
+  'The cash count cannot be for a future day': 'No se puede hacer el arqueo de un día futuro.',
 };
 
 String translateServerMessage(int statusCode, String? serverMessage) {
@@ -60,6 +75,22 @@ String translateServerMessage(int statusCode, String? serverMessage) {
     // "Amount exceeds the pending balance of S/ 12.00"
     final balance = RegExp(r'pending balance of (S/ [\d.]+)').firstMatch(serverMessage);
     if (balance != null) return 'El monto supera el saldo pendiente (${balance.group(1)}).';
+    // "Only 2.500 in stock; register a count if the real amount is different"
+    final stock = RegExp(r'^Only ([\d.]+) in stock').firstMatch(serverMessage);
+    if (stock != null) {
+      return 'Solo hay ${_trimQuantity(stock.group(1)!)} en stock. Si hay otra cantidad, registra un conteo.';
+    }
+    // "Cannot void: Limón has 2.000 left of the 5.500 bought; register a count first"
+    final voidStock = RegExp(
+      r'^Cannot void: (.+) has ([\d.]+) left of the ([\d.]+) bought',
+    ).firstMatch(serverMessage);
+    if (voidStock != null) {
+      return 'No se puede anular: de ${voidStock.group(1)} quedan ${_trimQuantity(voidStock.group(2)!)} '
+          'de los ${_trimQuantity(voidStock.group(3)!)} comprados. Registra un conteo primero.';
+    }
+    if (serverMessage.startsWith('username must be')) {
+      return 'Usuario inválido: 3 a 50 caracteres en minúsculas, números, ".", "_" o "-".';
+    }
     if (serverMessage.startsWith('Cannot change order status')) {
       return 'El pedido ya cambió de estado. Actualiza la lista.';
     }
@@ -75,3 +106,6 @@ String translateServerMessage(int statusCode, String? serverMessage) {
     _ => 'Error del servidor ($statusCode). Intenta de nuevo.',
   };
 }
+
+/// "2.500" -> "2.5", "3.000" -> "3"
+String _trimQuantity(String value) => value.contains('.') ? value.replaceFirst(RegExp(r'\.?0+$'), '') : value;

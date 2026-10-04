@@ -17,29 +17,39 @@ void main() {
     tester.view.physicalSize = const Size(400, 800); // phone
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(ProviderScope(
-      overrides: sessionOverrides(role: Role.waiter, http: http, realtime: realtime),
-      child: MaterialApp(home: home),
-    ));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: sessionOverrides(role: Role.waiter, http: http, realtime: realtime),
+        child: MaterialApp(home: home),
+      ),
+    );
     await tester.pumpAndSettle();
   }
 
   setUp(() => realtime = FakeRealtime());
 
   testWidgets('creates a dine-in order', (tester) async {
-    http = RecordingHttp((request) => switch ((request.method, request.url.path)) {
-          ('GET', '/api/orders') => (200, <Object>[]),
-          ('GET', '/api/dishes') => (200, [
-              dishJson(id: 5),
-              dishJson(id: 6, name: 'Chicha morada', categoryId: 2),
-              dishJson(id: 7, name: 'Arroz con pato', isAvailable: false),
-            ]),
-          ('GET', '/api/tables') => (200, [
-              {'id': 3, 'label': 'Mesa 3', 'isActive': true},
-            ]),
-          ('POST', '/api/orders') => (201, orderJson(id: 9)),
-          _ => (404, {'message': 'Not found'}),
-        });
+    http = RecordingHttp(
+      (request) => switch ((request.method, request.url.path)) {
+        ('GET', '/api/orders') => (200, <Object>[]),
+        ('GET', '/api/dishes') => (
+          200,
+          [
+            dishJson(id: 5),
+            dishJson(id: 6, name: 'Chicha morada', categoryId: 2),
+            dishJson(id: 7, name: 'Arroz con pato', isAvailable: false),
+          ],
+        ),
+        ('GET', '/api/tables') => (
+          200,
+          [
+            {'id': 3, 'label': 'Mesa 3', 'isActive': true},
+          ],
+        ),
+        ('POST', '/api/orders') => (201, orderJson(id: 9)),
+        _ => (404, {'message': 'Not found'}),
+      },
+    );
     await pump(tester, const WaiterOrdersPage());
     expect(find.text('Nada pendiente por ahora'), findsOneWidget);
 
@@ -79,28 +89,33 @@ void main() {
   });
 
   testWidgets('registers a cash payment and shows the change', (tester) async {
-    http = RecordingHttp((request) => switch ((request.method, request.url.path)) {
-          ('GET', '/api/orders') => (200, [orderJson(id: 4, status: 'DELIVERED')]),
-          ('GET', '/api/orders/4') => (200, orderJson(id: 4, status: 'DELIVERED', payments: [])),
-          ('POST', '/api/orders/4/payments') => (201, orderJson(
-              id: 4,
-              status: 'DELIVERED',
-              paymentStatus: 'PAID',
-              updatedAt: '2026-10-03T15:30:00.000Z',
-              payments: [
-                {
-                  'id': 1,
-                  'method': 'CASH',
-                  'amount': '40',
-                  'amountReceived': '50',
-                  'changeGiven': '10',
-                  'operationNumber': null,
-                  'createdAt': '2026-10-03T15:30:00.000Z',
-                },
-              ],
-            )),
-          _ => (404, {'message': 'Not found'}),
-        });
+    http = RecordingHttp(
+      (request) => switch ((request.method, request.url.path)) {
+        ('GET', '/api/orders') => (200, [orderJson(id: 4, status: 'DELIVERED')]),
+        ('GET', '/api/orders/4') => (200, orderJson(id: 4, status: 'DELIVERED', payments: [])),
+        ('POST', '/api/orders/4/payments') => (
+          201,
+          orderJson(
+            id: 4,
+            status: 'DELIVERED',
+            paymentStatus: 'PAID',
+            updatedAt: '2026-10-03T15:30:00.000Z',
+            payments: [
+              {
+                'id': 1,
+                'method': 'CASH',
+                'amount': '40',
+                'amountReceived': '50',
+                'changeGiven': '10',
+                'operationNumber': null,
+                'createdAt': '2026-10-03T15:30:00.000Z',
+              },
+            ],
+          ),
+        ),
+        _ => (404, {'message': 'Not found'}),
+      },
+    );
     await pump(tester, const OrderDetailPage(orderId: 4));
 
     expect(find.text('Cobrar S/ 40.00'), findsOneWidget);
@@ -122,11 +137,13 @@ void main() {
   });
 
   testWidgets('Yape requires a valid operation number', (tester) async {
-    http = RecordingHttp((request) => switch ((request.method, request.url.path)) {
-          ('GET', '/api/orders') => (200, <Object>[]),
-          ('GET', '/api/orders/4') => (200, orderJson(id: 4, status: 'READY', payments: [])),
-          _ => (404, {'message': 'Not found'}),
-        });
+    http = RecordingHttp(
+      (request) => switch ((request.method, request.url.path)) {
+        ('GET', '/api/orders') => (200, <Object>[]),
+        ('GET', '/api/orders/4') => (200, orderJson(id: 4, status: 'READY', payments: [])),
+        _ => (404, {'message': 'Not found'}),
+      },
+    );
     await pump(tester, const OrderDetailPage(orderId: 4));
 
     expect(find.text('Entregar'), findsOneWidget);
@@ -146,8 +163,10 @@ void main() {
     http = RecordingHttp((request) => (200, [orderJson(id: 1, status: 'IN_PREPARATION')]));
     await pump(tester, const WaiterOrdersPage());
 
-    realtime.emit(RealtimeEvent.orderUpdated,
-        orderJson(id: 1, status: 'READY', updatedAt: '2026-10-03T15:20:00.000Z'));
+    realtime.emit(
+      RealtimeEvent.orderUpdated,
+      orderJson(id: 1, status: 'READY', updatedAt: '2026-10-03T15:20:00.000Z'),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('¡Listo para entregar! #1 · Mesa 3'), findsOneWidget);

@@ -9,6 +9,7 @@ describe('ReportsService.daily', () => {
     order: { groupBy: jest.fn() },
     payment: { groupBy: jest.fn(), aggregate: jest.fn() },
     orderItem: { groupBy: jest.fn() },
+    expense: { groupBy: jest.fn() },
   };
   const service = new ReportsService(
     prisma as unknown as PrismaService,
@@ -29,6 +30,10 @@ describe('ReportsService.daily', () => {
     prisma.orderItem.groupBy.mockResolvedValue([
       { dishId: 1, dishName: 'Ceviche', _sum: { quantity: 5 } },
     ]);
+    prisma.expense.groupBy.mockResolvedValue([
+      { category: 'GAS', _sum: { amount: '12.00' } },
+      { category: 'INSUMOS', _sum: { amount: '30.50' } },
+    ]);
 
     const report = await service.daily('2026-10-02');
 
@@ -36,5 +41,71 @@ describe('ReportsService.daily', () => {
     expect(report.collectedTotal).toBe('90.50');
     expect(report.pendingBalance).toBe('20.00');
     expect(report.topDishes).toEqual([{ dishId: 1, dishName: 'Ceviche', quantity: 5 }]);
+    expect(report.expensesTotal).toBe('42.50');
+    expect(report.salesMinusExpenses).toBe('68.00');
+    expect(report.expensesByCategory[0]).toEqual({ category: 'INSUMOS', amount: '30.50' });
+    expect(prisma.expense.groupBy.mock.calls[0][0].where).toEqual({
+      businessDate: new Date('2026-10-02T00:00:00.000Z'),
+      isVoid: false,
+    });
+  });
+});
+
+describe('ReportsService.payments', () => {
+  const findMany = jest.fn();
+  const service = new ReportsService(
+    { payment: { findMany } } as unknown as PrismaService,
+    { get: () => -300 } as unknown as ConfigService,
+  );
+
+  it('lists the day\'s payments with who registered them and where', async () => {
+    findMany.mockResolvedValue([
+      {
+        id: 7, orderId: 3, method: PaymentMethod.YAPE, amount: '40.00', amountReceived: null,
+        changeGiven: null, operationNumber: '123456', createdAt: new Date('2026-10-02T18:00:00Z'),
+        registeredUser: { fullName: 'Rosa' },
+        order: { orderType: 'DINE_IN', customerName: null, table: { label: 'Mesa 2' } },
+      },
+    ]);
+
+    const report = await service.payments('2026-10-02');
+
+    // Peru day 2026-10-02 = 05:00Z .. next day 05:00Z
+    expect(findMany.mock.calls[0][0].where.createdAt).toEqual({
+      gte: new Date('2026-10-02T05:00:00.000Z'),
+      lt: new Date('2026-10-03T05:00:00.000Z'),
+    });
+    expect(report.payments[0]).toMatchObject({
+      operationNumber: '123456', registeredBy: 'Rosa', target: 'Mesa 2', orderType: 'DINE_IN',
+    });
+    expect(report.payments[0]).not.toHaveProperty('registeredUser');
+  });
+});
+
+describe('ReportsService.summary', () => {
+  const prisma = {
+    order: { findMany: jest.fn().mockResolvedValue([]) },
+    orderItem: { groupBy: jest.fn().mockResolvedValue([]) },
+    payment: { groupBy: jest.fn().mockResolvedValue([]) },
+    expense: { groupBy: jest.fn().mockResolvedValue([]) },
+  };
+  const service = new ReportsService(
+    prisma as unknown as PrismaService,
+    { get: () => -300 } as unknown as ConfigService,
+  );
+
+  it('queries the UTC window of the local days and excludes cancelled orders', async () => {
+    await service.summary('2026-10-01', '2026-10-03');
+    const where = prisma.order.findMany.mock.calls[0][0].where;
+    expect(where.createdAt).toEqual({
+      gte: new Date('2026-10-01T05:00:00.000Z'),
+      lt: new Date('2026-10-04T05:00:00.000Z'),
+    });
+    expect(where.status).toEqual({ not: OrderStatus.CANCELLED });
+  });
+
+  it('rejects inverted and too long ranges', async () => {
+    await expect(service.summary('2026-10-03', '2026-10-01')).rejects.toThrow('from must be on or before to');
+    await expect(service.summary('2025-01-01', '2026-10-01')).rejects.toThrow('366');
   });
 });

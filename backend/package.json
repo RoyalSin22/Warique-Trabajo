@@ -1,6 +1,6 @@
 {
   "name": "warique-orders-backend",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "build": "nest build",
@@ -9,6 +9,7 @@
     "start:prod": "node dist/main",
     "prisma:generate": "prisma generate",
     "db:seed": "node --env-file=.env -r ts-node/register prisma/seed.ts",
+    "db:demo": "node --env-file=.env -r ts-node/register prisma/demo.ts",
     "test": "jest",
     "test:cov": "jest --coverage"
   },

@@ -9,9 +9,7 @@ import 'session.dart';
 
 /// Today's orders, kept in sync with `order.created` / `order.updated` events.
 /// Every reconnection triggers a full reload so events missed while offline are recovered.
-final ordersProvider = AsyncNotifierProvider.autoDispose<OrdersNotifier, List<Order>>(
-  OrdersNotifier.new,
-);
+final ordersProvider = AsyncNotifierProvider.autoDispose<OrdersNotifier, List<Order>>(OrdersNotifier.new);
 
 class OrdersNotifier extends AsyncNotifier<List<Order>> {
   @override
@@ -69,9 +67,7 @@ class OrdersNotifier extends AsyncNotifier<List<Order>> {
       final orders = await ref.read(ordersRepositoryProvider).today();
       if (!ref.mounted) return;
       final previous = {for (final order in state.value ?? const <Order>[]) order.id: order};
-      state = AsyncData([
-        for (final order in orders) previous[order.id]?.mergeWith(order) ?? order,
-      ]);
+      state = AsyncData([for (final order in orders) previous[order.id]?.mergeWith(order) ?? order]);
     } catch (error, stack) {
       if (!ref.mounted) return;
       // Keep showing the last known list; only surface the error when there is nothing to show

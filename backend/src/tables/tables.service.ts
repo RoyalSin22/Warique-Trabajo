@@ -1,5 +1,6 @@
 // backend/src/tables/tables.service.ts
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
+import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTableDto, UpdateTableDto } from './dto/table.dto';
 
@@ -18,7 +19,19 @@ export class TablesService {
     return this.prisma.diningTable.create({ data: dto });
   }
 
-  update(id: number, dto: UpdateTableDto) {
+  async update(id: number, dto: UpdateTableDto) {
+    if (dto.isActive === false) {
+      // A table with an open order would vanish from the waiters' table picker mid-service
+      const openOrders = await this.prisma.order.count({
+        where: {
+          tableId: id,
+          status: { in: [OrderStatus.PENDING, OrderStatus.IN_PREPARATION, OrderStatus.READY] },
+        },
+      });
+      if (openOrders > 0) {
+        throw new ConflictException('The table has open orders');
+      }
+    }
     return this.prisma.diningTable.update({ where: { id }, data: dto });
   }
 }

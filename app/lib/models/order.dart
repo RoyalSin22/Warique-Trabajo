@@ -122,14 +122,14 @@ class Payment {
   });
 
   factory Payment.fromJson(Map<String, dynamic> json) => Payment(
-        id: json['id'] as int,
-        method: PaymentMethod.fromApi(json['method'] as String),
-        amount: Money.parse(json['amount']),
-        amountReceived: Money.tryParse(json['amountReceived']),
-        changeGiven: Money.tryParse(json['changeGiven']),
-        operationNumber: json['operationNumber'] as String?,
-        createdAt: DateTime.parse(json['createdAt'] as String).toLocal(),
-      );
+    id: json['id'] as int,
+    method: PaymentMethod.fromApi(json['method'] as String),
+    amount: Money.parse(json['amount']),
+    amountReceived: Money.tryParse(json['amountReceived']),
+    changeGiven: Money.tryParse(json['changeGiven']),
+    operationNumber: json['operationNumber'] as String?,
+    createdAt: DateTime.parse(json['createdAt'] as String).toLocal(),
+  );
 
   final int id;
   final PaymentMethod method;
@@ -177,9 +177,7 @@ class Order {
       cancelReason: json['cancelReason'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String).toLocal(),
       updatedAt: DateTime.parse(json['updatedAt'] as String).toLocal(),
-      items: [
-        for (final item in json['items'] as List) OrderItem.fromJson(item as Map<String, dynamic>),
-      ],
+      items: [for (final item in json['items'] as List) OrderItem.fromJson(item as Map<String, dynamic>)],
       payments: payments == null
           ? null
           : [for (final payment in payments) Payment.fromJson(payment as Map<String, dynamic>)],
@@ -206,29 +204,27 @@ class Order {
 
   /// "Mesa 3" or "Para llevar · Juan"
   String get target => switch (orderType) {
-        OrderType.dineIn => tableLabel ?? 'Mesa',
-        OrderType.takeaway =>
-          customerName == null || customerName!.isEmpty ? 'Para llevar' : 'Para llevar · $customerName',
-      };
+    OrderType.dineIn => tableLabel ?? 'Mesa',
+    OrderType.takeaway =>
+      customerName == null || customerName!.isEmpty ? 'Para llevar' : 'Para llevar · $customerName',
+  };
 
   Money get paid => (payments ?? const <Payment>[]).fold(Money.zero, (sum, p) => sum + p.amount);
 
   /// Null when payments were not loaded (list responses) and the order is partially paid.
   Money? get balance => switch (paymentStatus) {
-        PaymentStatus.paid => Money.zero,
-        PaymentStatus.unpaid => total,
-        PaymentStatus.partial => payments == null ? null : total - paid,
-      };
+    PaymentStatus.paid => Money.zero,
+    PaymentStatus.unpaid => total,
+    PaymentStatus.partial => payments == null ? null : total - paid,
+  };
 
-  bool get canReceivePayment =>
-      status != OrderStatus.cancelled && paymentStatus != PaymentStatus.paid;
+  bool get canReceivePayment => status != OrderStatus.cancelled && paymentStatus != PaymentStatus.paid;
 
   /// Waiter still has something to do: deliver it or collect it.
   bool get needsAttention =>
       status.isOpen || (status == OrderStatus.delivered && paymentStatus != PaymentStatus.paid);
 
-  bool canTransition(OrderStatus to, Role role) =>
-      orderTransitions[status]?[to]?.contains(role) ?? false;
+  bool canTransition(OrderStatus to, Role role) => orderTransitions[status]?[to]?.contains(role) ?? false;
 
   /// Cancelling with payments needs a refund flow the backend does not have.
   bool canCancel(Role role) =>

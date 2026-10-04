@@ -7,12 +7,8 @@ import 'api_exception.dart';
 
 /// Thin JSON client for the NestJS API (`/api` prefix, Bearer JWT).
 class ApiClient {
-  ApiClient({
-    required this.baseUrl,
-    this.token,
-    this.onUnauthorized,
-    http.Client? httpClient,
-  }) : _http = httpClient ?? http.Client();
+  ApiClient({required this.baseUrl, this.token, this.onUnauthorized, http.Client? httpClient})
+    : _http = httpClient ?? http.Client();
 
   /// Server root, e.g. `http://192.168.1.50:3000` (no `/api`).
   final String baseUrl;
@@ -25,10 +21,10 @@ class ApiClient {
 
   static const _timeout = Duration(seconds: 15);
 
-  Future<dynamic> get(String path, {Map<String, String>? query}) =>
-      _send('GET', path, query: query);
+  Future<dynamic> get(String path, {Map<String, String>? query}) => _send('GET', path, query: query);
 
-  Future<dynamic> post(String path, [Object? body]) => _send('POST', path, body: body);
+  Future<dynamic> post(String path, [Object? body, Map<String, String>? headers]) =>
+      _send('POST', path, body: body, headers: headers);
 
   Future<dynamic> patch(String path, [Object? body]) => _send('PATCH', path, body: body);
 
@@ -37,12 +33,14 @@ class ApiClient {
     String path, {
     Map<String, String>? query,
     Object? body,
+    Map<String, String>? headers,
   }) async {
     final uri = Uri.parse('$baseUrl/api$path').replace(queryParameters: query);
     final request = http.Request(method, uri)
       ..headers['Accept'] = 'application/json'
       ..headers['Content-Type'] = 'application/json';
     if (token != null) request.headers['Authorization'] = 'Bearer $token';
+    if (headers != null) request.headers.addAll(headers);
     if (body != null) request.body = jsonEncode(body);
 
     final http.Response response;

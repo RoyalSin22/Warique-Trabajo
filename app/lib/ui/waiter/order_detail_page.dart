@@ -8,6 +8,7 @@ import '../../models/user.dart';
 import '../../state/orders.dart';
 import '../../state/session.dart';
 import '../widgets/common.dart';
+import 'new_order_page.dart';
 import 'payment_sheet.dart';
 
 class OrderDetailPage extends ConsumerStatefulWidget {
@@ -64,16 +65,33 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     }
   }
 
+  Future<void> _newRoundFor(Order order) async {
+    final created = await Navigator.of(context).push<Order>(
+      MaterialPageRoute(
+        builder: (_) => NewOrderPage(
+          initialType: order.orderType,
+          initialTableId: order.tableId,
+          initialCustomerName: order.customerName,
+        ),
+      ),
+    );
+    if (created == null || !mounted) return;
+    ref.read(ordersProvider.notifier).upsert(created);
+    showInfoSnack(context, 'Pedido #${created.id} enviado a cocina');
+  }
+
   Future<void> _changeStatus(Order order, OrderStatus to) => _run(
-        () => ref.read(ordersRepositoryProvider).changeStatus(order.id, to),
-        'Pedido #${order.id}: ${to.label}',
-      );
+    () => ref.read(ordersRepositoryProvider).changeStatus(order.id, to),
+    'Pedido #${order.id}: ${to.label}',
+  );
 
   Future<void> _cancel(Order order) async {
     final reason = await showDialog<String>(context: context, builder: (_) => const _CancelDialog());
     if (reason == null) return;
     await _run(
-      () => ref.read(ordersRepositoryProvider).changeStatus(order.id, OrderStatus.cancelled, cancelReason: reason),
+      () => ref
+          .read(ordersRepositoryProvider)
+          .changeStatus(order.id, OrderStatus.cancelled, cancelReason: reason),
       'Pedido #${order.id} cancelado',
     );
   }
@@ -122,92 +140,129 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
         title: Text('Pedido #${order.id}'),
         actions: [
           const ConnectionIndicator(),
+          // Orders cannot be edited once in the kitchen: a second round is a new order, same target
+          if (role != Role.kitchen && order.status != OrderStatus.cancelled)
+            IconButton(
+              onPressed: () => _newRoundFor(order),
+              icon: const Icon(Icons.add_shopping_cart),
+              tooltip: order.orderType == OrderType.dineIn
+                  ? 'Otro pedido para esta mesa'
+                  : 'Otro pedido para este cliente',
+            ),
           IconButton(onPressed: _busy ? null : _load, icon: const Icon(Icons.refresh)),
         ],
       ),
-      body: ListView(padding: const EdgeInsets.all(16), children: [
-        Text(order.target, style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 4),
-        Text('${timeLabel(order.createdAt)} · ${order.waiterName}'),
-        const SizedBox(height: 8),
-        Wrap(spacing: 6, children: [
-          StatusChip(order.status),
-          if (order.status != OrderStatus.cancelled) PaymentChip(order.paymentStatus),
-        ]),
-        if (order.cancelReason != null) ...[
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text(order.target, style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 4),
+          Text('${timeLabel(order.createdAt)} · ${order.waiterName}'),
           const SizedBox(height: 8),
-          Text('Motivo de cancelación: ${order.cancelReason}',
-              style: TextStyle(color: Theme.of(context).colorScheme.error)),
-        ],
-        const Divider(height: 24),
-        for (final item in order.items)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SizedBox(width: 36, child: Text('${item.quantity}×', style: const TextStyle(fontWeight: FontWeight.bold))),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(item.dishName),
-                  if (item.notes != null)
-                    Text(item.notes!, style: TextStyle(color: Colors.amber.shade900, fontStyle: FontStyle.italic)),
-                ]),
-              ),
-              Text(item.subtotal.toString()),
-            ]),
+          Wrap(
+            spacing: 6,
+            children: [
+              StatusChip(order.status),
+              if (order.status != OrderStatus.cancelled) PaymentChip(order.paymentStatus),
+            ],
           ),
-        if (order.notes != null) ...[
-          const SizedBox(height: 8),
-          Text('Nota: ${order.notes}', style: const TextStyle(fontStyle: FontStyle.italic)),
-        ],
-        const Divider(height: 24),
-        _AmountRow('Total', order.total, bold: true),
-        if (order.payments != null) ...[
-          _AmountRow('Pagado', order.paid),
-          if (balance != null) _AmountRow('Saldo', balance, bold: balance.isPositive),
-          const SizedBox(height: 8),
-          for (final payment in order.payments!)
-            ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(payment.method == PaymentMethod.cash ? Icons.payments : Icons.qr_code_2),
-              title: Text('${payment.method.label} · ${payment.amount}'),
-              subtitle: Text([
-                timeLabel(payment.createdAt),
-                if (payment.amountReceived != null) 'recibido ${payment.amountReceived}',
-                if (payment.changeGiven != null && payment.changeGiven!.isPositive) 'vuelto ${payment.changeGiven}',
-                if (payment.operationNumber != null) 'op. ${payment.operationNumber}',
-              ].join(' · ')),
+          if (order.cancelReason != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Motivo de cancelación: ${order.cancelReason}',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
+          ],
+          const Divider(height: 24),
+          for (final item in order.items)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 36,
+                    child: Text('${item.quantity}×', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(item.dishName),
+                        if (item.notes != null)
+                          Text(
+                            item.notes!,
+                            style: TextStyle(color: Colors.amber.shade900, fontStyle: FontStyle.italic),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Text(item.subtotal.toString()),
+                ],
+              ),
+            ),
+          if (order.notes != null) ...[
+            const SizedBox(height: 8),
+            Text('Nota: ${order.notes}', style: const TextStyle(fontStyle: FontStyle.italic)),
+          ],
+          const Divider(height: 24),
+          _AmountRow('Total', order.total, bold: true),
+          if (order.payments != null) ...[
+            _AmountRow('Pagado', order.paid),
+            if (balance != null) _AmountRow('Saldo', balance, bold: balance.isPositive),
+            const SizedBox(height: 8),
+            for (final payment in order.payments!)
+              ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(payment.method == PaymentMethod.cash ? Icons.payments : Icons.qr_code_2),
+                title: Text('${payment.method.label} · ${payment.amount}'),
+                subtitle: Text(
+                  [
+                    timeLabel(payment.createdAt),
+                    if (payment.amountReceived != null) 'recibido ${payment.amountReceived}',
+                    if (payment.changeGiven != null && payment.changeGiven!.isPositive)
+                      'vuelto ${payment.changeGiven}',
+                    if (payment.operationNumber != null) 'op. ${payment.operationNumber}',
+                  ].join(' · '),
+                ),
+              ),
+          ],
         ],
-      ]),
+      ),
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.end, children: [
-            if (order.canCancel(role))
-              OutlinedButton.icon(
-                onPressed: _busy ? null : () => _cancel(order),
-                icon: const Icon(Icons.cancel_outlined),
-                label: const Text('Cancelar'),
-              ),
-            for (final to in nextSteps)
-              FilledButton.tonalIcon(
-                onPressed: _busy ? null : () => _changeStatus(order, to),
-                icon: Icon(to == OrderStatus.delivered ? Icons.room_service : Icons.soup_kitchen),
-                label: Text(switch (to) {
-                  OrderStatus.inPreparation => 'Iniciar preparación',
-                  OrderStatus.ready => 'Marcar listo',
-                  _ => 'Entregar',
-                }),
-              ),
-            if (order.canReceivePayment && role != Role.kitchen)
-              FilledButton.icon(
-                // Balance unknown until payments load (only for partially paid orders)
-                onPressed: _busy || balance == null ? null : () => _pay(order, balance),
-                icon: const Icon(Icons.point_of_sale),
-                label: Text('Cobrar ${balance ?? ''}'),
-              ),
-          ]),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.end,
+            children: [
+              if (order.canCancel(role))
+                OutlinedButton.icon(
+                  onPressed: _busy ? null : () => _cancel(order),
+                  icon: const Icon(Icons.cancel_outlined),
+                  label: const Text('Cancelar'),
+                ),
+              for (final to in nextSteps)
+                FilledButton.tonalIcon(
+                  onPressed: _busy ? null : () => _changeStatus(order, to),
+                  icon: Icon(to == OrderStatus.delivered ? Icons.room_service : Icons.soup_kitchen),
+                  label: Text(switch (to) {
+                    OrderStatus.inPreparation => 'Iniciar preparación',
+                    OrderStatus.ready => 'Marcar listo',
+                    _ => 'Entregar',
+                  }),
+                ),
+              if (order.canReceivePayment && role != Role.kitchen)
+                FilledButton.icon(
+                  // Balance unknown until payments load (only for partially paid orders)
+                  onPressed: _busy || balance == null ? null : () => _pay(order, balance),
+                  icon: const Icon(Icons.point_of_sale),
+                  label: Text('Cobrar ${balance ?? ''}'),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -235,10 +290,12 @@ class _AmountRow extends StatelessWidget {
     final style = bold ? Theme.of(context).textTheme.titleMedium : null;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(children: [
-        Expanded(child: Text(label, style: style)),
-        Text(amount.toString(), style: style),
-      ]),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: style)),
+          Text(amount.toString(), style: style),
+        ],
+      ),
     );
   }
 }
@@ -263,21 +320,21 @@ class _CancelDialogState extends State<_CancelDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Cancelar pedido'),
-        content: TextField(
-          controller: _controller,
-          autofocus: true,
-          maxLength: 255,
-          decoration: const InputDecoration(labelText: 'Motivo', hintText: 'Ej.: el cliente se retiró'),
-          onChanged: (_) => setState(() {}),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Volver')),
-          FilledButton(
-            onPressed: _valid ? () => Navigator.pop(context, _controller.text.trim()) : null,
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
-            child: const Text('Cancelar pedido'),
-          ),
-        ],
-      );
+    title: const Text('Cancelar pedido'),
+    content: TextField(
+      controller: _controller,
+      autofocus: true,
+      maxLength: 255,
+      decoration: const InputDecoration(labelText: 'Motivo', hintText: 'Ej.: el cliente se retiró'),
+      onChanged: (_) => setState(() {}),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Volver')),
+      FilledButton(
+        onPressed: _valid ? () => Navigator.pop(context, _controller.text.trim()) : null,
+        style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+        child: const Text('Cancelar pedido'),
+      ),
+    ],
+  );
 }

@@ -17,6 +17,9 @@ class AuthRepository {
   }
 
   Future<AppUser> me() async => AppUser.fromJson(await _api.get('/auth/me') as Json);
+
+  Future<void> changeOwnPassword(String currentPassword, String newPassword) =>
+      _api.patch('/auth/password', {'currentPassword': currentPassword, 'newPassword': newPassword});
 }
 
 class MenuRepository {
@@ -25,15 +28,16 @@ class MenuRepository {
   final ApiClient _api;
 
   /// Active dishes of active categories, ordered by category and name (server side).
-  Future<List<Dish>> dishes() async =>
-      [for (final json in await _api.get('/dishes') as List) Dish.fromJson(json as Json)];
+  Future<List<Dish>> dishes() async => [
+    for (final json in await _api.get('/dishes') as List) Dish.fromJson(json as Json),
+  ];
 
-  Future<List<DiningTable>> tables() async =>
-      [for (final json in await _api.get('/tables') as List) DiningTable.fromJson(json as Json)];
+  Future<List<DiningTable>> tables() async => [
+    for (final json in await _api.get('/tables') as List) DiningTable.fromJson(json as Json),
+  ];
 
-  Future<Dish> setAvailability(int dishId, bool isAvailable) async => Dish.fromJson(
-        await _api.patch('/dishes/$dishId/availability', {'isAvailable': isAvailable}) as Json,
-      );
+  Future<Dish> setAvailability(int dishId, bool isAvailable) async =>
+      Dish.fromJson(await _api.patch('/dishes/$dishId/availability', {'isAvailable': isAvailable}) as Json);
 
   Future<int> resetAvailability() async =>
       (await _api.post('/dishes/availability/reset') as Json)['updated'] as int;
@@ -47,10 +51,10 @@ class NewOrderItem {
   final String? notes;
 
   Json toJson() => {
-        'dishId': dishId,
-        'quantity': quantity,
-        if (notes != null && notes!.trim().isNotEmpty) 'notes': notes!.trim(),
-      };
+    'dishId': dishId,
+    'quantity': quantity,
+    if (notes != null && notes!.trim().isNotEmpty) 'notes': notes!.trim(),
+  };
 }
 
 class OrdersRepository {
@@ -58,11 +62,20 @@ class OrdersRepository {
 
   final ApiClient _api;
 
+  /// Same key on a retry = the server returns the first result instead of duplicating it.
+  static Map<String, String>? _idempotency(String? requestId) =>
+      requestId == null ? null : {'Idempotency-Key': requestId};
+
   /// Today's orders (business day computed by the server), oldest first.
   Future<List<Order>> today({List<OrderStatus>? statuses}) async {
-    final json = await _api.get('/orders', query: {
-      if (statuses != null && statuses.isNotEmpty) 'status': statuses.map((s) => s.api).join(','),
-    }) as List;
+    final json =
+        await _api.get(
+              '/orders',
+              query: {
+                if (statuses != null && statuses.isNotEmpty) 'status': statuses.map((s) => s.api).join(','),
+              },
+            )
+            as List;
     return [for (final order in json) Order.fromJson(order as Json)];
   }
 
@@ -74,6 +87,7 @@ class OrdersRepository {
     int? tableId,
     String? customerName,
     String? notes,
+    String? requestId,
   }) async {
     final json = await _api.post('/orders', {
       'orderType': orderType.api,
@@ -81,7 +95,7 @@ class OrdersRepository {
       if (customerName != null && customerName.trim().isNotEmpty) 'customerName': customerName.trim(),
       if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
       'items': [for (final item in items) item.toJson()],
-    });
+    }, _idempotency(requestId));
     return Order.fromJson(json as Json);
   }
 
@@ -99,13 +113,14 @@ class OrdersRepository {
     required Money amount,
     Money? amountReceived,
     String? operationNumber,
+    String? requestId,
   }) async {
     final json = await _api.post('/orders/$id/payments', {
       'method': method.api,
       'amount': amount.toJson(),
       if (method == PaymentMethod.cash) 'amountReceived': (amountReceived ?? amount).toJson(),
       if (method != PaymentMethod.cash) 'operationNumber': operationNumber?.trim(),
-    });
+    }, _idempotency(requestId));
     return Order.fromJson(json as Json);
   }
 }

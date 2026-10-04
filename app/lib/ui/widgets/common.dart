@@ -5,6 +5,7 @@ import '../../core/api_exception.dart';
 import '../../models/order.dart';
 import '../../state/realtime.dart';
 import '../../state/session.dart';
+import '../owner/users_admin_page.dart' show showChangeOwnPasswordDialog;
 
 String errorMessage(Object error) =>
     error is ApiException ? error.message : 'Ocurrió un error inesperado. Intenta de nuevo.';
@@ -12,10 +13,9 @@ String errorMessage(Object error) =>
 void showErrorSnack(BuildContext context, Object error) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(
-      content: Text(errorMessage(error)),
-      backgroundColor: Theme.of(context).colorScheme.error,
-    ));
+    ..showSnackBar(
+      SnackBar(content: Text(errorMessage(error)), backgroundColor: Theme.of(context).colorScheme.error),
+    );
 }
 
 void showInfoSnack(BuildContext context, String message) {
@@ -78,13 +78,13 @@ class _Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(12)),
-        child: Text(
-          label,
-          style: TextStyle(color: foreground, fontSize: 12, fontWeight: FontWeight.w600),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(12)),
+    child: Text(
+      label,
+      style: TextStyle(color: foreground, fontSize: 12, fontWeight: FontWeight.w600),
+    ),
+  );
 }
 
 /// Green/red dot in the app bar: is the screen receiving live updates?
@@ -98,13 +98,16 @@ class ConnectionIndicator extends ConsumerWidget {
       message: connected ? 'En línea: actualización automática' : 'Sin conexión en tiempo real',
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.circle, size: 12, color: connected ? Colors.green : Colors.red),
-          if (!connected) ...[
-            const SizedBox(width: 4),
-            const Text('Sin conexión', style: TextStyle(fontSize: 12)),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.circle, size: 12, color: connected ? Colors.green : Colors.red),
+            if (!connected) ...[
+              const SizedBox(width: 4),
+              const Text('Sin conexión', style: TextStyle(fontSize: 12)),
+            ],
           ],
-        ]),
+        ),
       ),
     );
   }
@@ -122,6 +125,10 @@ class LogoutButton extends ConsumerWidget {
       itemBuilder: (context) => [
         PopupMenuItem(enabled: false, child: Text('${user.fullName} · ${user.role.label}')),
         PopupMenuItem(
+          onTap: () => showChangeOwnPasswordDialog(context, ref),
+          child: const Row(children: [Icon(Icons.key), SizedBox(width: 8), Text('Cambiar contraseña')]),
+        ),
+        PopupMenuItem(
           onTap: () => ref.read(sessionProvider.notifier).logout(),
           child: const Row(children: [Icon(Icons.logout), SizedBox(width: 8), Text('Cerrar sesión')]),
         ),
@@ -138,21 +145,24 @@ class ErrorRetryView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.cloud_off, size: 48),
-            const SizedBox(height: 12),
-            Text(errorMessage(error), textAlign: TextAlign.center),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Reintentar'),
-            ),
-          ]),
-        ),
-      );
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.cloud_off, size: 48),
+          const SizedBox(height: 12),
+          Text(errorMessage(error), textAlign: TextAlign.center),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Reintentar'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class EmptyView extends StatelessWidget {
@@ -163,10 +173,13 @@ class EmptyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 48, color: Theme.of(context).colorScheme.outline),
-          const SizedBox(height: 8),
-          Text(message, style: TextStyle(color: Theme.of(context).colorScheme.outline)),
-        ]),
-      );
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 48, color: Theme.of(context).colorScheme.outline),
+        const SizedBox(height: 8),
+        Text(message, style: TextStyle(color: Theme.of(context).colorScheme.outline)),
+      ],
+    ),
+  );
 }

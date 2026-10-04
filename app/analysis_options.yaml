@@ -9,6 +9,10 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+# `dart format lib test` is the source of truth for code style
+formatter:
+  page_width: 110
+
 analyzer:
   exclude:
     - build/**

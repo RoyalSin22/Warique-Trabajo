@@ -8,6 +8,7 @@ abstract final class RealtimeEvent {
   static const orderUpdated = 'order.updated';
   static const dishUpdated = 'dish.updated';
   static const dishesReset = 'dishes.reset';
+  static const supplyUpdated = 'supply.updated';
 }
 
 class RealtimeMessage {
@@ -56,6 +57,7 @@ class SocketRealtimeClient implements RealtimeClient {
       RealtimeEvent.orderUpdated,
       RealtimeEvent.dishUpdated,
       RealtimeEvent.dishesReset,
+      RealtimeEvent.supplyUpdated,
     ]) {
       _socket.on(event, (payload) => _messages.add(RealtimeMessage(event, payload)));
     }

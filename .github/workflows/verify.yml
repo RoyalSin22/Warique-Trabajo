@@ -1,0 +1,154 @@
+# Verifies what cannot be tested on a Linux dev box:
+#  - the real Windows installation (Windows PowerShell 5.1, MySQL 8.4 service, WinSW, ACLs,
+#    firewall, scheduled backup as SYSTEM, restore, update with rollback)
+#  - the signed Android release APK
+# Passwords below are throwaway values for disposable CI machines.
+name: Verify Windows install and Android APK
+
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  # Queue instead of cancelling: a Windows run takes ~25 min and each one is worth finishing
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: '3.47.6'
+
+jobs:
+  windows-install:
+    name: Windows install (PowerShell 5.1 + MySQL 8.4)
+    runs-on: windows-2022
+    timeout-minutes: 75
+    env:
+      CI_MYSQL_ROOT_PASSWORD: Ci-Root-Pass-2026
+      CI_OWNER_PASSWORD: Ci-Owner-Pass-2026
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Peru time zone, like the restaurant PC
+        shell: powershell
+        run: Set-TimeZone -Id 'SA Pacific Standard Time'; Get-TimeZone
+
+      - name: MySQL 8.4 as a Windows service (no time zone set)
+        shell: powershell
+        run: .github\scripts\setup-mysql-windows.ps1 -RootPassword $env:CI_MYSQL_ROOT_PASSWORD
+
+      - name: Build the release package with Windows PowerShell 5.1 (runs all tests)
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File deploy\windows\build-release.ps1
+
+      - name: Extract the package and simulate Google Drive (mirror mode folder)
+        shell: powershell
+        run: |
+          $zip = Get-ChildItem release -Filter 'warique-*.zip' | Select-Object -First 1
+          Expand-Archive -LiteralPath $zip.FullName -DestinationPath "$env:RUNNER_TEMP\pkg"
+          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\Mi unidad" | Out-Null
+
+      - name: install.ps1 (unattended)
+        shell: powershell
+        env:
+          WARIQUE_MYSQL_ADMIN_PASSWORD: ${{ env.CI_MYSQL_ROOT_PASSWORD }}
+          OWNER_USERNAME: duenio
+          OWNER_FULL_NAME: Dueño CI
+          OWNER_PASSWORD: ${{ env.CI_OWNER_PASSWORD }}
+        run: |
+          $pkg = (Get-ChildItem "$env:RUNNER_TEMP\pkg" -Directory | Select-Object -First 1).FullName
+          powershell -NoProfile -ExecutionPolicy Bypass -File "$pkg\scripts\install.ps1" -GoogleDrive -MySqlService MySQL84 -AssumeYes
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify the installation
+        shell: powershell
+        env:
+          WARIQUE_MYSQL_ADMIN_PASSWORD: ${{ env.CI_MYSQL_ROOT_PASSWORD }}
+        run: |
+          $pkg = (Get-ChildItem "$env:RUNNER_TEMP\pkg" -Directory | Select-Object -First 1).FullName
+          powershell -NoProfile -ExecutionPolicy Bypass -File .github\scripts\verify-windows-install.ps1 `
+            -ReleaseDir $pkg -OwnerPassword $env:CI_OWNER_PASSWORD -DriveCopyDir "$env:USERPROFILE\Mi unidad\RespaldosWarique"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload the release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: warique-release-windows
+          path: release/warique-*.zip*
+          retention-days: 14
+
+      - name: Upload service logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: warique-logs
+          path: C:\Warique\logs
+          retention-days: 7
+
+  android-apk:
+    name: Android release APK (signed)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Throwaway signing key and key.properties (same format as the README)
+        run: |
+          keytool -genkeypair -v -keystore "$RUNNER_TEMP/warique-ci.jks" -keyalg RSA -keysize 2048 -validity 1 \
+            -alias warique -storepass ci-store-pass -keypass ci-store-pass -dname "CN=Warique CI, O=Warique, C=PE"
+          cat > app/android/key.properties <<PROPS
+          storeFile=$RUNNER_TEMP/warique-ci.jks
+          storePassword=ci-store-pass
+          keyAlias=warique
+          keyPassword=ci-store-pass
+          PROPS
+
+      - name: flutter build apk --release
+        working-directory: app
+        run: flutter pub get && flutter build apk --release
+
+      - name: Verify signature, permissions and cleartext LAN access
+        run: |
+          APK=app/build/app/outputs/flutter-apk/app-release.apk
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          ls -la "$APK"
+          "$BT/apksigner" verify --print-certs "$APK" | tee certs.txt
+          grep -q "CN=Warique CI" certs.txt
+          "$BT/aapt" dump badging "$APK" | grep -E "^package:|application-label:" 
+          "$BT/aapt" dump permissions "$APK" | tee perms.txt
+          grep -q "android.permission.INTERNET" perms.txt
+          "$BT/aapt" dump xmltree "$APK" AndroidManifest.xml | grep -i "usesCleartextTraffic" | tee cleartext.txt
+          grep -q "0xffffffff" cleartext.txt
+
+      - name: Upload the APK (signed with the throwaway CI key)
+        uses: actions/upload-artifact@v4
+        with:
+          name: warique-apk-ci-signed
+          path: app/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 14

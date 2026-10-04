@@ -2,17 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_exception.dart';
+import '../../core/ids.dart';
 import '../../core/money.dart';
 import '../../models/menu.dart';
 import '../../models/order.dart';
 import '../../state/menu.dart';
 import '../../state/session.dart';
 import '../widgets/common.dart';
+import '../widgets/text_controllers.dart';
 import 'cart.dart';
 
 /// Builds a new order. Pops with the created [Order].
 class NewOrderPage extends ConsumerStatefulWidget {
-  const NewOrderPage({super.key});
+  const NewOrderPage({super.key, this.initialTableId, this.initialCustomerName, this.initialType});
+
+  /// Pre-selected target, e.g. "otro pedido para esta mesa" from an order's detail.
+  final int? initialTableId;
+  final String? initialCustomerName;
+  final OrderType? initialType;
 
   @override
   ConsumerState<NewOrderPage> createState() => _NewOrderPageState();
@@ -20,11 +27,24 @@ class NewOrderPage extends ConsumerStatefulWidget {
 
 class _NewOrderPageState extends ConsumerState<NewOrderPage> {
   final _cart = Cart();
-  OrderType _type = OrderType.dineIn;
-  int? _tableId;
-  final _customerController = TextEditingController();
-  final _notesController = TextEditingController();
+  late OrderType _type = widget.initialType ?? OrderType.dineIn;
+  late int? _tableId = widget.initialTableId;
+  late final _customerController = TextEditingController(text: widget.initialCustomerName)
+    ..addListener(_contentChanged);
+  late final _notesController = TextEditingController()..addListener(_contentChanged);
   bool _submitting = false;
+
+  /// Idempotency key of the order being sent. Kept across retries of the SAME order (a timeout
+  /// may hide a success), discarded as soon as the waiter changes anything.
+  String? _requestId;
+
+  void _contentChanged() => _requestId = null;
+
+  /// setState for changes to the order itself.
+  void _change(VoidCallback fn) => setState(() {
+    fn();
+    _contentChanged();
+  });
 
   @override
   void dispose() {
@@ -37,30 +57,34 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
     if (!_cart.add(dish.id)) {
       showInfoSnack(context, 'Límite alcanzado: 99 unidades por plato y 50 platos distintos.');
     }
-    setState(() {});
+    _change(() {});
   }
 
   Future<void> _editNote(Dish dish) async {
-    final controller = TextEditingController(text: _cart.noteOf(dish.id));
     final note = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Nota: ${dish.name}'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLength: 150,
-          decoration: const InputDecoration(hintText: 'Ej.: sin ají, bien cocido'),
-          onSubmitted: (value) => Navigator.pop(context, value),
+      builder: (_) => WithTextControllers(
+        initialTexts: [_cart.noteOf(dish.id)],
+        builder: (context, controllers) => AlertDialog(
+          title: Text('Nota: ${dish.name}'),
+          content: TextField(
+            controller: controllers.single,
+            autofocus: true,
+            maxLength: 150,
+            decoration: const InputDecoration(hintText: 'Ej.: sin ají, bien cocido'),
+            onSubmitted: (value) => Navigator.pop(context, value),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, controllers.single.text),
+              child: const Text('Guardar'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Guardar')),
-        ],
       ),
     );
-    controller.dispose();
-    if (note != null) setState(() => _cart.setNote(dish.id, note));
+    if (note != null) _change(() => _cart.setNote(dish.id, note));
   }
 
   String? _validationError(Map<int, Dish> menu) {
@@ -77,23 +101,32 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
       return;
     }
     setState(() => _submitting = true);
+    _requestId ??= newRequestId();
     try {
-      final order = await ref.read(ordersRepositoryProvider).create(
+      final order = await ref
+          .read(ordersRepositoryProvider)
+          .create(
             orderType: _type,
             tableId: _tableId,
             customerName: _type == OrderType.takeaway ? _customerController.text : null,
             notes: _notesController.text,
             items: _cart.toItems(),
+            requestId: _requestId,
           );
       if (mounted) Navigator.of(context).pop(order);
     } on ApiException catch (error) {
       if (!mounted) return;
       // Someone marked a dish as sold out after it was added: drop it and tell the waiter
       if (error.unavailableDishIds.isNotEmpty) {
-        setState(() => error.unavailableDishIds.forEach(_cart.removeDish));
+        _change(() => error.unavailableDishIds.forEach(_cart.removeDish));
         ref.read(menuProvider.notifier).refresh();
       }
-      showErrorSnack(context, error);
+      if (error.isNetwork) {
+        // The order may have reached the kitchen; resending unchanged is safe (same key)
+        showErrorSnack(context, ApiException(0, '${error.message} Puedes reintentar: no se duplicará.'));
+      } else {
+        showErrorSnack(context, error);
+      }
     } catch (error) {
       if (mounted) showErrorSnack(context, error);
     } finally {
@@ -116,8 +149,8 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
         menu: menu,
         target: _type == OrderType.dineIn
             ? (ref.read(tablesProvider).value ?? const <DiningTable>[])
-                .firstWhere((t) => t.id == _tableId, orElse: () => const DiningTable(id: 0, label: 'Mesa'))
-                .label
+                  .firstWhere((t) => t.id == _tableId, orElse: () => const DiningTable(id: 0, label: 'Mesa'))
+                  .label
             : 'Para llevar',
         notesController: _notesController,
       ),
@@ -131,37 +164,41 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Nuevo pedido'), actions: const [ConnectionIndicator()]),
-      body: Column(children: [
-        _TargetSelector(
-          type: _type,
-          tableId: _tableId,
-          customerController: _customerController,
-          onTypeChanged: (type) => setState(() => _type = type),
-          onTableChanged: (id) => setState(() => _tableId = id),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: switch (menuAsync) {
-            AsyncValue(value: final dishes?) => _MenuTabs(
+      body: Column(
+        children: [
+          _TargetSelector(
+            type: _type,
+            tableId: _tableId,
+            customerController: _customerController,
+            onTypeChanged: (type) => _change(() => _type = type),
+            onTableChanged: (id) => _change(() => _tableId = id),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: switch (menuAsync) {
+              AsyncValue(value: final dishes?) => _MenuTabs(
                 dishes: dishes,
                 cart: _cart,
                 onAdd: _add,
-                onRemove: (dish) => setState(() => _cart.remove(dish.id)),
+                onRemove: (dish) => _change(() => _cart.remove(dish.id)),
                 onNote: _editNote,
               ),
-            AsyncError(:final error) =>
-              ErrorRetryView(error: error, onRetry: () => ref.invalidate(menuProvider)),
-            _ => const Center(child: CircularProgressIndicator()),
-          },
-        ),
-      ]),
+              AsyncError(:final error) => ErrorRetryView(
+                error: error,
+                onRetry: () => ref.invalidate(menuProvider),
+              ),
+              _ => const Center(child: CircularProgressIndicator()),
+            },
+          ),
+        ],
+      ),
       bottomNavigationBar: switch (menuAsync.value) {
         final dishes? => _CartBar(
-            cart: _cart,
-            menu: {for (final dish in dishes) dish.id: dish},
-            submitting: _submitting,
-            onReview: _review,
-          ),
+          cart: _cart,
+          menu: {for (final dish in dishes) dish.id: dish},
+          submitting: _submitting,
+          onReview: _review,
+        ),
         null => null,
       },
     );
@@ -188,52 +225,64 @@ class _TargetSelector extends ConsumerWidget {
     final tables = ref.watch(tablesProvider);
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        SegmentedButton<OrderType>(
-          segments: const [
-            ButtonSegment(value: OrderType.dineIn, label: Text('Mesa'), icon: Icon(Icons.table_restaurant)),
-            ButtonSegment(value: OrderType.takeaway, label: Text('Para llevar'), icon: Icon(Icons.takeout_dining)),
-          ],
-          selected: {type},
-          onSelectionChanged: (selection) => onTypeChanged(selection.first),
-        ),
-        const SizedBox(height: 8),
-        if (type == OrderType.dineIn)
-          switch (tables) {
-            AsyncValue(value: final list?) when list.isEmpty =>
-              const Text('No hay mesas registradas. El dueño debe crearlas.'),
-            AsyncValue(value: final list?) => SizedBox(
-                height: 40,
-                child: ListView(scrollDirection: Axis.horizontal, children: [
-                  for (final table in list)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: ChoiceChip(
-                        label: Text(table.label),
-                        selected: table.id == tableId,
-                        onSelected: (selected) => onTableChanged(selected ? table.id : null),
-                      ),
-                    ),
-                ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SegmentedButton<OrderType>(
+            segments: const [
+              ButtonSegment(value: OrderType.dineIn, label: Text('Mesa'), icon: Icon(Icons.table_restaurant)),
+              ButtonSegment(
+                value: OrderType.takeaway,
+                label: Text('Para llevar'),
+                icon: Icon(Icons.takeout_dining),
               ),
-            AsyncError() => TextButton.icon(
+            ],
+            selected: {type},
+            onSelectionChanged: (selection) => onTypeChanged(selection.first),
+          ),
+          const SizedBox(height: 8),
+          if (type == OrderType.dineIn)
+            switch (tables) {
+              AsyncValue(value: final list?) when list.isEmpty => const Text(
+                'No hay mesas registradas. El dueño debe crearlas.',
+              ),
+              // Wrap, not a horizontal list: every table (and the selected one) stays visible
+              AsyncValue(value: final list?) => ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 132),
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 2,
+                    children: [
+                      for (final table in list)
+                        ChoiceChip(
+                          label: Text(table.label),
+                          selected: table.id == tableId,
+                          onSelected: (selected) => onTableChanged(selected ? table.id : null),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              AsyncError() => TextButton.icon(
                 onPressed: () => ref.invalidate(tablesProvider),
                 icon: const Icon(Icons.refresh),
                 label: const Text('No se pudieron cargar las mesas. Reintentar'),
               ),
-            _ => const LinearProgressIndicator(),
-          }
-        else
-          TextField(
-            controller: customerController,
-            maxLength: 80,
-            decoration: const InputDecoration(
-              labelText: 'Nombre del cliente (opcional)',
-              isDense: true,
-              counterText: '',
+              _ => const LinearProgressIndicator(),
+            }
+          else
+            TextField(
+              controller: customerController,
+              maxLength: 80,
+              decoration: const InputDecoration(
+                labelText: 'Nombre del cliente (opcional)',
+                isDense: true,
+                counterText: '',
+              ),
             ),
-          ),
-      ]),
+        ],
+      ),
     );
   }
 }
@@ -267,34 +316,38 @@ class _MenuTabs extends StatelessWidget {
 
     return DefaultTabController(
       length: groups.length,
-      child: Column(children: [
-        TabBar(
-          isScrollable: true,
-          tabAlignment: TabAlignment.start,
-          tabs: [
-            for (final (category, list) in groups)
-              Tab(text: _badge(category.name, list.fold(0, (sum, d) => sum + cart.quantityOf(d.id)))),
-          ],
-        ),
-        Expanded(
-          child: TabBarView(children: [
-            for (final (_, list) in groups)
-              ListView.separated(
-                padding: const EdgeInsets.only(bottom: 16),
-                itemCount: list.length,
-                separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (context, index) => _DishRow(
-                  dish: list[index],
-                  quantity: cart.quantityOf(list[index].id),
-                  note: cart.noteOf(list[index].id),
-                  onAdd: onAdd,
-                  onRemove: onRemove,
-                  onNote: onNote,
-                ),
-              ),
-          ]),
-        ),
-      ]),
+      child: Column(
+        children: [
+          TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            tabs: [
+              for (final (category, list) in groups)
+                Tab(text: _badge(category.name, list.fold(0, (sum, d) => sum + cart.quantityOf(d.id)))),
+            ],
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                for (final (_, list) in groups)
+                  ListView.separated(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    itemCount: list.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, index) => _DishRow(
+                      dish: list[index],
+                      quantity: cart.quantityOf(list[index].id),
+                      note: cart.noteOf(list[index].id),
+                      onAdd: onAdd,
+                      onRemove: onRemove,
+                      onNote: onNote,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -325,35 +378,43 @@ class _DishRow extends StatelessWidget {
     return ListTile(
       enabled: !soldOut || quantity > 0,
       onTap: soldOut ? null : () => onAdd(dish),
-      title: Text(
-        dish.name,
-        style: soldOut ? const TextStyle(decoration: TextDecoration.lineThrough) : null,
+      title: Text(dish.name, style: soldOut ? const TextStyle(decoration: TextDecoration.lineThrough) : null),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            soldOut ? '${dish.price} · AGOTADO' : dish.price.toString(),
+            style: soldOut ? TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.bold) : null,
+          ),
+          if (note != null)
+            Text(
+              'Nota: $note',
+              style: TextStyle(color: Colors.amber.shade900, fontStyle: FontStyle.italic),
+            ),
+        ],
       ),
-      subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(soldOut ? '${dish.price} · AGOTADO' : dish.price.toString(),
-            style: soldOut ? TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.bold) : null),
-        if (note != null)
-          Text('Nota: $note', style: TextStyle(color: Colors.amber.shade900, fontStyle: FontStyle.italic)),
-      ]),
       trailing: quantity == 0
           ? IconButton.filledTonal(
               onPressed: soldOut ? null : () => onAdd(dish),
               icon: const Icon(Icons.add),
               tooltip: 'Agregar',
             )
-          : Row(mainAxisSize: MainAxisSize.min, children: [
-              IconButton(
-                onPressed: () => onNote(dish),
-                icon: Icon(note == null ? Icons.edit_note : Icons.sticky_note_2),
-                tooltip: 'Nota para cocina',
-              ),
-              IconButton(onPressed: () => onRemove(dish), icon: const Icon(Icons.remove_circle_outline)),
-              Text('$quantity', style: theme.textTheme.titleMedium),
-              IconButton(
-                onPressed: soldOut ? null : () => onAdd(dish),
-                icon: const Icon(Icons.add_circle_outline),
-              ),
-            ]),
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  onPressed: () => onNote(dish),
+                  icon: Icon(note == null ? Icons.edit_note : Icons.sticky_note_2),
+                  tooltip: 'Nota para cocina',
+                ),
+                IconButton(onPressed: () => onRemove(dish), icon: const Icon(Icons.remove_circle_outline)),
+                Text('$quantity', style: theme.textTheme.titleMedium),
+                IconButton(
+                  onPressed: soldOut ? null : () => onAdd(dish),
+                  icon: const Icon(Icons.add_circle_outline),
+                ),
+              ],
+            ),
     );
   }
 }
@@ -372,31 +433,40 @@ class _CartBar extends StatelessWidget {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          if (soldOut.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                'Agotado: ${soldOut.map((id) => menu[id]?.name ?? 'plato retirado').join(', ')}. Quítalo para continuar.',
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (soldOut.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Agotado: ${soldOut.map((id) => menu[id]?.name ?? 'plato retirado').join(', ')}. Quítalo para continuar.',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
               ),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('${cart.unitCount} ${cart.unitCount == 1 ? 'plato' : 'platos'}'),
+                      Text(cart.total(menu).toString(), style: Theme.of(context).textTheme.titleLarge),
+                    ],
+                  ),
+                ),
+                FilledButton.icon(
+                  onPressed: cart.isEmpty || submitting ? null : () => onReview(menu),
+                  icon: submitting
+                      ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.send),
+                  label: const Text('Revisar y enviar'),
+                ),
+              ],
             ),
-          Row(children: [
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Text('${cart.unitCount} ${cart.unitCount == 1 ? 'plato' : 'platos'}'),
-                Text(cart.total(menu).toString(), style: Theme.of(context).textTheme.titleLarge),
-              ]),
-            ),
-            FilledButton.icon(
-              onPressed: cart.isEmpty || submitting ? null : () => onReview(menu),
-              icon: submitting
-                  ? const SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.send),
-              label: const Text('Revisar y enviar'),
-            ),
-          ]),
-        ]),
+          ],
+        ),
       ),
     );
   }
@@ -418,45 +488,50 @@ class _ReviewSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        bottom: MediaQuery.viewInsetsOf(context).bottom + 16,
+      padding: EdgeInsets.only(left: 16, right: 16, bottom: MediaQuery.viewInsetsOf(context).bottom + 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(target, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.4),
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                for (final id in cart.dishIds)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Text('${cart.quantityOf(id)}×', style: Theme.of(context).textTheme.titleMedium),
+                    title: Text(menu[id]?.name ?? 'Plato #$id'),
+                    subtitle: cart.noteOf(id) == null ? null : Text(cart.noteOf(id)!),
+                    trailing: Text(((menu[id]?.price ?? Money.zero) * cart.quantityOf(id)).toString()),
+                  ),
+              ],
+            ),
+          ),
+          TextField(
+            controller: notesController,
+            maxLength: 255,
+            decoration: const InputDecoration(labelText: 'Nota general del pedido (opcional)'),
+          ),
+          Row(
+            children: [
+              Expanded(child: Text('Total estimado', style: Theme.of(context).textTheme.titleMedium)),
+              Text(cart.total(menu).toString(), style: Theme.of(context).textTheme.titleLarge),
+            ],
+          ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+            icon: const Icon(Icons.soup_kitchen),
+            label: const Text('Enviar a cocina'),
+          ),
+        ],
       ),
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text(target, style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
-        ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.4),
-          child: ListView(shrinkWrap: true, children: [
-            for (final id in cart.dishIds)
-              ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: Text('${cart.quantityOf(id)}×', style: Theme.of(context).textTheme.titleMedium),
-                title: Text(menu[id]?.name ?? 'Plato #$id'),
-                subtitle: cart.noteOf(id) == null ? null : Text(cart.noteOf(id)!),
-                trailing: Text(((menu[id]?.price ?? Money.zero) * cart.quantityOf(id)).toString()),
-              ),
-          ]),
-        ),
-        TextField(
-          controller: notesController,
-          maxLength: 255,
-          decoration: const InputDecoration(labelText: 'Nota general del pedido (opcional)'),
-        ),
-        Row(children: [
-          Expanded(child: Text('Total estimado', style: Theme.of(context).textTheme.titleMedium)),
-          Text(cart.total(menu).toString(), style: Theme.of(context).textTheme.titleLarge),
-        ]),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: () => Navigator.pop(context, true),
-          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-          icon: const Icon(Icons.soup_kitchen),
-          label: const Text('Enviar a cocina'),
-        ),
-      ]),
     );
   }
 }

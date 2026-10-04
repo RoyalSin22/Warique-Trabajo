@@ -53,16 +53,18 @@ class Cart {
 
   /// Estimated total with current menu prices. The server recomputes it on creation.
   Money total(Map<int, Dish> menu) => _quantities.entries.fold(
-        Money.zero,
-        (sum, entry) => sum + (menu[entry.key]?.price ?? Money.zero) * entry.value,
-      );
+    Money.zero,
+    (sum, entry) => sum + (menu[entry.key]?.price ?? Money.zero) * entry.value,
+  );
 
   /// Dishes in the cart that are now sold out or gone from the menu.
-  List<int> unavailable(Map<int, Dish> menu) =>
-      [for (final id in dishIds) if (!(menu[id]?.isAvailable ?? false)) id];
+  List<int> unavailable(Map<int, Dish> menu) => [
+    for (final id in dishIds)
+      if (!(menu[id]?.isAvailable ?? false)) id,
+  ];
 
   List<NewOrderItem> toItems() => [
-        for (final entry in _quantities.entries)
-          NewOrderItem(dishId: entry.key, quantity: entry.value, notes: _notes[entry.key]),
-      ];
+    for (final entry in _quantities.entries)
+      NewOrderItem(dishId: entry.key, quantity: entry.value, notes: _notes[entry.key]),
+  ];
 }

@@ -8,8 +8,10 @@ import 'state/session.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final preferences = await SharedPreferences.getInstance();
-  runApp(ProviderScope(
-    overrides: [sharedPreferencesProvider.overrideWithValue(preferences)],
-    child: const WariqueApp(),
-  ));
+  runApp(
+    ProviderScope(
+      overrides: [sharedPreferencesProvider.overrideWithValue(preferences)],
+      child: const WariqueApp(),
+    ),
+  );
 }

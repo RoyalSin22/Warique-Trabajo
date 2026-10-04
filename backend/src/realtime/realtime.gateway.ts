@@ -8,6 +8,9 @@ import { PrismaService } from '../prisma/prisma.service';
 
 export const STAFF_ROOM = 'staff';
 
+/** Per-user room, used to drop the connections of a deactivated account. */
+export const userRoom = (userId: number): string => `user:${userId}`;
+
 /**
  * Clients connect with: io(url, { auth: { token: '<JWT>' } }).
  * Unauthenticated or inactive users are disconnected immediately.
@@ -36,7 +39,7 @@ export class RealtimeGateway implements OnGatewayConnection {
       });
       if (!user?.isActive) throw new Error('Inactive user');
 
-      await client.join(STAFF_ROOM);
+      await client.join([STAFF_ROOM, userRoom(payload.sub)]);
     } catch (error) {
       this.logger.warn(`Socket rejected: ${(error as Error).message}`);
       client.disconnect(true);

@@ -3,6 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
 import '../core/api_exception.dart';
+import '../data/admin_repository.dart';
+import '../data/inventory_repository.dart';
 import '../data/repositories.dart';
 import '../data/settings_store.dart';
 import '../models/user.dart';
@@ -12,8 +14,9 @@ final sharedPreferencesProvider = Provider<SharedPreferences>(
   (ref) => throw UnimplementedError('sharedPreferencesProvider must be overridden'),
 );
 
-final settingsStoreProvider =
-    Provider<SettingsStore>((ref) => SettingsStore(ref.watch(sharedPreferencesProvider)));
+final settingsStoreProvider = Provider<SettingsStore>(
+  (ref) => SettingsStore(ref.watch(sharedPreferencesProvider)),
+);
 
 class Session {
   const Session({required this.serverUrl, required this.token, required this.user});
@@ -45,11 +48,7 @@ class SessionNotifier extends AsyncNotifier<Session?> {
     }
   }
 
-  Future<void> login({
-    required String serverUrl,
-    required String username,
-    required String password,
-  }) async {
+  Future<void> login({required String serverUrl, required String username, required String password}) async {
     final url = normalizeServerUrl(serverUrl);
     final result = await AuthRepository(ApiClient(baseUrl: url)).login(username.trim(), password);
     await _settings.setServerUrl(url);
@@ -87,3 +86,5 @@ final apiClientProvider = Provider<ApiClient>((ref) {
 final authRepositoryProvider = Provider((ref) => AuthRepository(ref.watch(apiClientProvider)));
 final menuRepositoryProvider = Provider((ref) => MenuRepository(ref.watch(apiClientProvider)));
 final ordersRepositoryProvider = Provider((ref) => OrdersRepository(ref.watch(apiClientProvider)));
+final adminRepositoryProvider = Provider((ref) => AdminRepository(ref.watch(apiClientProvider)));
+final inventoryRepositoryProvider = Provider((ref) => InventoryRepository(ref.watch(apiClientProvider)));

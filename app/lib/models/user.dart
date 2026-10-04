@@ -16,11 +16,11 @@ class AppUser {
   const AppUser({required this.id, required this.username, required this.fullName, required this.role});
 
   factory AppUser.fromJson(Map<String, dynamic> json) => AppUser(
-        id: json['id'] as int,
-        username: json['username'] as String,
-        fullName: json['fullName'] as String,
-        role: Role.fromApi(json['role'] as String),
-      );
+    id: json['id'] as int,
+    username: json['username'] as String,
+    fullName: json['fullName'] as String,
+    role: Role.fromApi(json['role'] as String),
+  );
 
   final int id;
   final String username;

@@ -22,8 +22,10 @@ class OrderChanges {
 
   /// Cancelled while the kitchen had it queued or on the stove.
   Iterable<Order> cancelledInKitchen() => statusChanged
-      .where((change) =>
-          change.order.status == OrderStatus.cancelled &&
-          (change.from == OrderStatus.pending || change.from == OrderStatus.inPreparation))
+      .where(
+        (change) =>
+            change.order.status == OrderStatus.cancelled &&
+            (change.from == OrderStatus.pending || change.from == OrderStatus.inPreparation),
+      )
       .map((change) => change.order);
 }

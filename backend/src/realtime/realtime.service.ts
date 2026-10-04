@@ -1,12 +1,13 @@
 // backend/src/realtime/realtime.service.ts
 import { Injectable } from '@nestjs/common';
-import { RealtimeGateway, STAFF_ROOM } from './realtime.gateway';
+import { RealtimeGateway, STAFF_ROOM, userRoom } from './realtime.gateway';
 
 export const RealtimeEvent = {
   ORDER_CREATED: 'order.created',
   ORDER_UPDATED: 'order.updated',
   DISH_UPDATED: 'dish.updated',
   DISHES_RESET: 'dishes.reset',
+  SUPPLY_UPDATED: 'supply.updated',
 } as const;
 
 /** Thin facade so business services never depend on Socket.IO directly. */
@@ -28,6 +29,15 @@ export class RealtimeService {
 
   dishesReset(result: { updated: number }): void {
     this.emit(RealtimeEvent.DISHES_RESET, result);
+  }
+
+  supplyUpdated(supply: unknown): void {
+    this.emit(RealtimeEvent.SUPPLY_UPDATED, supply);
+  }
+
+  /** Closes every live connection of a user (e.g. just deactivated). */
+  disconnectUser(userId: number): void {
+    this.gateway.server?.in(userRoom(userId)).disconnectSockets(true);
   }
 
   private emit(event: string, payload: unknown): void {
