@@ -29,7 +29,10 @@ class CashCard extends ConsumerWidget {
             () => ref.read(inventoryRepositoryProvider).openCash(date, Money.parse(controllers.single.text)),
           ),
           children: [
-            const Text('Efectivo que pones en la caja para dar vuelto, antes del primer cliente.'),
+            const Text(
+              'Efectivo que hay en la caja antes del primer cliente. Si sacas dinero para el mercado, '
+              'cuenta ANTES de sacarlo y registra la compra en Gastos con "Caja".',
+            ),
             TextFormField(
               controller: controllers.single,
               autofocus: true,

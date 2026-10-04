@@ -23,6 +23,51 @@ PC del local (Windows 10/11)
 | `C:\Warique\backups` | Respaldos `.zip` de los últimos 30 días | Solo administradores |
 | `C:\Warique\scripts` | `backup.ps1`, `restore.ps1`, `status.ps1`, `update.ps1` | Administradores |
 
+## Puesta en marcha: lista de verificación
+
+Imprime esta lista y marca cada paso. Hazla un día **sin atención** (o antes de las 11:00): la
+instalación y la carga inicial toman unas 2 a 3 horas.
+
+**Día de instalación**
+
+- [ ] **1. IP fija.** Reserva DHCP para la PC en el router (sección 1, punto 4). Anota la IP: `__________`
+- [ ] **2. Google Drive.** Instalado en modo *Duplicar archivos*, verificación en dos pasos activada
+      (sección 1, punto 5).
+- [ ] **3. Instalar Warique** con `install.ps1 -GoogleDrive` (sección 2). Al terminar, en
+      <https://drive.google.com> aparece `RespaldosWarique` con un `.zip`.
+      Si ya había una versión instalada, usa `update.ps1` (sección 6).
+- [ ] Ejecuta `C:\Warique\scripts\status.ps1`: debe terminar con **Todo en orden**.
+- [ ] **4. Datos iniciales** (en este orden, desde la PC o el celular del dueño):
+  - [ ] *Gestión → Menú*: categorías (Entradas, Fondos, Bebidas…) y platos con su precio.
+  - [ ] *Gestión → Mesas*: una por mesa física, con el mismo nombre que usa el personal.
+  - [ ] *Gestión → Usuarios*: una cuenta por mozo y por cocinero, **cada uno con su propia clave**
+        (no compartan cuentas: el cierre muestra quién cobró cada pago).
+  - [ ] *Gestión → Conectar celulares*: escanea el QR con cada celular (sección 3). Para empezar usa
+        el **navegador**, no el APK.
+- [ ] **5. Insumos:** en *Gestión → Insumos* crea los que se compran a diario con su mínimo
+      (ej.: pescado 3 kg, limón 2 kg). Luego la cocina, en su pestaña *Insumos*, registra un
+      **conteo** de cada uno: ese es el stock inicial.
+- [ ] Prueba completa con el personal: un pedido de mesa y uno para llevar, que la cocina los vea al
+      instante, cobro en efectivo y por Yape, y que aparezcan en *Cierre*.
+
+**Al día siguiente**
+
+- [ ] **6. Respaldo:** la tarjeta de arriba en *Cierre* está **verde** (el respaldo de las 18:30 se hizo
+      y se copió a Drive). Si sale roja, revisa la sección 5 antes de seguir.
+
+**Primeros días de atención: marcha blanca**
+
+- [ ] **7.** Durante **2 días de atención** usa Warique **y** la comanda en papel a la vez. Al cierre de
+      cada día compara:
+  - Número de pedidos y total de ventas en *Cierre* contra el papel.
+  - *Pagos del día* filtrado por Yape/Plin contra la app del banco.
+  - El **arqueo**: abre la caja con el fondo al empezar y ciérrala contando el efectivo.
+- [ ] Deja el papel cuando se cumplan **las tres** condiciones en 2 cierres seguidos: ningún pedido
+      perdido ni duplicado, ventas iguales al papel, y arqueo que cuadra (o con una diferencia que
+      tiene explicación).
+- [ ] Si algo no cuadra, anota la hora, el pedido y la pantalla, y ejecuta `status.ps1`: con eso
+      soporte puede revisar.
+
 ## 1. Antes de instalar
 
 1. **Windows 10 u 11 actualizado**, con una cuenta de administrador.
@@ -100,6 +145,10 @@ Parámetros útiles: `-ActiveHoursStart 8 -ActiveHoursEnd 22 -BackupTime '18:30'
   cuenta el efectivo **sin mirar** cuánto debería haber y toca *Cerrar caja*: el sistema muestra
   *Cuadra*, *Faltan S/ …* o *Sobran S/ …*. Si después entra otro cobro o gasto en efectivo, la tarjeta
   avisa y puedes *Volver a contar*.
+- **Compra del mercado con dinero de la caja:** el fondo es lo que hay en la caja **antes** de sacar
+  el dinero para el mercado. Abre la caja con ese monto y registra la compra en *Gastos* eligiendo
+  **Caja**: el sistema ya la resta. Si abres la caja con lo que quedó **después** de comprar, la compra
+  se restaría dos veces y el cierre mostraría un *Sobran* falso.
 - **Gastos:** en *Gestión → Gastos* (o tocando *Gastos* en *Cierre*) registra cada gasto el mismo día.
   Elige **Caja** si el dinero salió de la caja (baja lo que debe haber al cerrar) u **Otro** si pagaste
   con Yape, transferencia o de tu bolsillo. Una compra del mercado se registra como *Insumos* con una
