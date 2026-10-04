@@ -100,6 +100,10 @@ Parámetros útiles: `-ActiveHoursStart 8 -ActiveHoursEnd 22 -BackupTime '18:30'
   cuenta el efectivo **sin mirar** cuánto debería haber y toca *Cerrar caja*: el sistema muestra
   *Cuadra*, *Faltan S/ …* o *Sobran S/ …*. Si después entra otro cobro o gasto en efectivo, la tarjeta
   avisa y puedes *Volver a contar*.
+- **Compra del mercado con dinero de la caja:** el fondo es lo que hay en la caja **antes** de sacar
+  el dinero para el mercado. Abre la caja con ese monto y registra la compra en *Gastos* eligiendo
+  **Caja**: el sistema ya la resta. Si abres la caja con lo que quedó **después** de comprar, la compra
+  se restaría dos veces y el cierre mostraría un *Sobran* falso.
 - **Gastos:** en *Gestión → Gastos* (o tocando *Gastos* en *Cierre*) registra cada gasto el mismo día.
   Elige **Caja** si el dinero salió de la caja (baja lo que debe haber al cerrar) u **Otro** si pagaste
   con Yape, transferencia o de tu bolsillo. Una compra del mercado se registra como *Insumos* con una
