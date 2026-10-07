@@ -6,7 +6,7 @@
     powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -GoogleDrive
 
   Pasos (cada uno se puede repetir sin romper nada):
-   1. Verifica Node.js 22+ y el servicio de MySQL; ajusta my.ini (UTC y solo acceso local) con confirmacion.
+   1. Verifica Node.js 22+ (el que trae el paquete, o el instalado) y el servicio de MySQL; ajusta my.ini (UTC y solo acceso local) con confirmacion.
    2. Crea la base de datos (si no existe) y los usuarios de MySQL con claves aleatorias.
    3. Copia la aplicacion a C:\Warique y genera la configuracion (.env) con permisos restringidos.
    4. Registra el servicio "Warique" (WinSW, cuenta LocalService, reinicio automatico).
@@ -39,6 +39,9 @@ param(
     [ValidateRange(0, 23)]
     [int]$ActiveHoursEnd = 22,
     [switch]$SkipWindowsSettings,
+    # Marca como Privada la red actual si Windows la tiene como Publica (sin esto los celulares no
+    # se conectan). Solo si la PC esta en la red del local; el instalador .exe lo pregunta.
+    [switch]$MarkNetworkPrivate,
     # Instalacion desatendida: acepta los ajustes de my.ini sin preguntar (nunca cambia el tipo de red).
     # Las claves se toman de WARIQUE_MYSQL_ADMIN_PASSWORD, OWNER_USERNAME, OWNER_FULL_NAME y OWNER_PASSWORD.
     [switch]$AssumeYes
@@ -161,11 +164,21 @@ try {
 
     # ---------------------------------------------------------------- 1. Requisitos
     Write-Step "Instalando Warique $version en $InstallDir"
-    $node = Get-Command node.exe -ErrorAction SilentlyContinue
-    if (-not $node) { throw 'No se encontro Node.js. Instala Node.js 22 LTS (nodejs.org) y abre una nueva ventana.' }
-    $nodeVersion = (& $node.Source --version).Trim()
+    # The package brings its own Node.js (app\runtime): the service runs the copy inside C:\Warique\app,
+    # so an update swaps app and runtime together (and a rollback restores both)
+    $bundledNode = Join-Path $ReleaseDir 'app\runtime\node.exe'
+    if (Test-Path -LiteralPath $bundledNode) {
+        $nodeCheck = $bundledNode
+        $nodeExe = Join-Path $paths.App 'runtime\node.exe'
+    } else {
+        $systemNode = Get-Command node.exe -ErrorAction SilentlyContinue
+        if (-not $systemNode) { throw 'No se encontro Node.js. Instala Node.js 22 LTS (nodejs.org) y abre una nueva ventana.' }
+        $nodeCheck = $systemNode.Source
+        $nodeExe = $systemNode.Source
+    }
+    $nodeVersion = (& $nodeCheck --version).Trim()
     if ([int]($nodeVersion.TrimStart('v').Split('.')[0]) -lt 22) { throw "Se requiere Node.js 22 o superior (hay $nodeVersion)." }
-    Write-Ok "Node.js $nodeVersion ($($node.Source))"
+    Write-Ok "Node.js $nodeVersion ($nodeExe)"
 
     if (-not $MySqlService) {
         $candidates = @(Get-Service -Name 'MySQL*' -ErrorAction SilentlyContinue)
@@ -295,7 +308,7 @@ try {
         if (-not $env:OWNER_PASSWORD) { $env:OWNER_PASSWORD = Read-NewPassword 'Clave del dueno' 10 }
         $env:WARIQUE_ENV_FILE = $envFile
         try {
-            $result = Invoke-Native $node.Source @('dist\cli\create-owner.js') $paths.App
+            $result = Invoke-Native $nodeExe @('dist\cli\create-owner.js') $paths.App
             if ($result.ExitCode -ne 0) { throw "No se pudo crear la cuenta: $($result.StdErr.Trim())" }
             Write-Ok $result.StdOut.Trim()
         } finally {
@@ -313,7 +326,7 @@ try {
   <id>$ServiceName</id>
   <name>Warique</name>
   <description>Warique: pedidos, cocina y cobros (API y app web en el puerto $Port)</description>
-  <executable>$(& $x $node.Source)</executable>
+  <executable>$(& $x $nodeExe)</executable>
   <arguments>dist\main.js</arguments>
   <workingdirectory>$(& $x $paths.App)</workingdirectory>
   <env name="NODE_ENV" value="production" />
@@ -350,7 +363,7 @@ try {
     foreach ($netProfile in @(Get-NetConnectionProfile | Where-Object { $_.NetworkCategory -eq 'Public' })) {
         Write-Warn "La red '$($netProfile.Name)' es Publica: los celulares no podran conectarse."
         # Never automatic: only a person can tell whether this is the restaurant's own network
-        if (-not $AssumeYes -and (Confirm-Choice "    Marcar '$($netProfile.Name)' como red Privada? (solo si es la red del local)")) {
+        if ($MarkNetworkPrivate -or (-not $AssumeYes -and (Confirm-Choice "    Marcar '$($netProfile.Name)' como red Privada? (solo si es la red del local)"))) {
             Set-NetConnectionProfile -InterfaceIndex $netProfile.InterfaceIndex -NetworkCategory Private
             Write-Ok "'$($netProfile.Name)' ahora es Privada"
         }

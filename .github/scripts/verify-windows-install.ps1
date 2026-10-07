@@ -50,6 +50,12 @@ Check 'service Warique runs as LocalService, automatic start' {
     Write-Host "      $($svc.State) $($svc.StartMode) $($svc.StartName)"
     $svc.State -eq 'Running' -and $svc.StartMode -eq 'Auto' -and $svc.StartName -eq 'NT AUTHORITY\LocalService'
 }
+Check 'service runs the Node.js bundled in the package (not the runner''s)' {
+    $xml = [xml](Get-Content "$InstallDir\service\warique.xml" -Raw)
+    $exe = $xml.service.executable
+    Write-Host "      $exe $(& $exe --version)"
+    $exe -eq "$InstallDir\app\runtime\node.exe"
+}
 Check 'health ok and MySQL in UTC (runner clock is Peru time)' {
     $h = Health; Write-Host "      $($h | ConvertTo-Json -Compress)"
     $h.status -eq 'ok' -and $h.dbUtcOffsetMinutes -eq 0

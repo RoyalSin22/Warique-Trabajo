@@ -194,9 +194,11 @@ app over the local Wi-Fi at `http://<pc-ip>:3000`. Full runbook (Spanish):
 
 ```powershell
 # Development machine: tests, builds and packages everything into release\warique-<version>.zip
-powershell -ExecutionPolicy Bypass -File deploy\windows\build-release.ps1 -WithApk
+# (-WithInstaller, on Windows with Inno Setup 6: also release\Warique-Setup-<version>.exe)
+powershell -ExecutionPolicy Bypass -File deploy\windows\build-release.ps1 -WithApk -WithInstaller
 
-# Restaurant PC (as administrator, inside the extracted package)
+# Restaurant PC: double-click Warique-Setup-<version>.exe (installs, or updates an existing install)
+# or, as administrator inside the extracted package:
 powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -GoogleDrive
 ```
 
@@ -206,7 +208,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -GoogleDrive
 | Service account | `NT AUTHORITY\LocalService`: reads the app and `.env`, writes only `logs\` |
 | Secrets | `config\.env` and MySQL option files, ACL Administrators + SYSTEM (+ service read on `.env`); MySQL passwords are random and never typed on a command line |
 | Network | One port (app + API + Socket.IO), firewall rule for Private networks only; MySQL bound to `127.0.0.1` |
-| Offline package | Production `node_modules` and the Prisma Windows engine are bundled: no internet or build tools needed on the PC |
+| Offline package | Node.js 22 for Windows (pinned SHA256, `app\runtime\node.exe`), production `node_modules` and the Prisma Windows engine are bundled: no internet, Node.js or build tools needed on the PC. The runtime lives inside `app`, so an update and its rollback swap it together with the code |
+| Installer | `Warique-Setup-<version>.exe` (Inno Setup 6, Spanish wizard): MySQL root password, owner account, Google Drive and network options; extracts the package to `C:\ProgramData\WariqueInstalador` and runs the same `install.ps1` / `update.ps1` through `setup-run.ps1` (secrets passed as environment variables, never on a command line). Unsigned for now (SmartScreen shows "Unknown publisher"); verify it with the `.sha256` file. CI installs through it silently |
 | Backups | Daily `mysqldump --single-transaction` (task as SYSTEM, runs late if the PC was off), integrity check, zip + SHA256, 30-day retention, copy to the owner's Google Drive (desktop client in *Mirror files* mode: *Stream files* mounts a per-user drive SYSTEM cannot see); the installer tests the copy through the real scheduled task |
 | Updates | `update.ps1`: backup, pending schema migrations, swap `app` / `app.previous`, health check, automatic rollback |
 | Schema changes | `database/migrations/NNN_*.sql`, idempotent and additive only (the previous version keeps working if an update rolls back); recorded in `schema_migrations`. A copy is kept in `C:\Warique\database\migrations` so `status.ps1` flags any change that was not applied (update cut short). Pending ones are detected with the read-only backup account, so the MySQL root password is asked only when there is something to apply (or taken from `WARIQUE_MYSQL_ADMIN_PASSWORD`) |
