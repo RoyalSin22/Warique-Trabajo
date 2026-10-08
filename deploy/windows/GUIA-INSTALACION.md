@@ -145,7 +145,10 @@ Parámetros útiles: `-ActiveHoursStart 8 -ActiveHoursEnd 22 -BackupTime '18:30'
   escanea el código QR con la cámara de cada celular.
 - **Navegador (recomendado para empezar):** abre `http://192.168.1.50:3000` en Chrome y usa
   *Agregar a pantalla principal*. Se actualiza solo cuando se actualiza el servidor.
-- **App Android:** si el paquete se armó con `-WithApk`, descárgala desde
+- **App Android:** primero crea la llave propia de firma **una sola vez**, en la PC donde se compila:
+  `deploy\windows\new-android-key.ps1`. Guarda la carpeta `WariqueLlaves` (llave + `LEEME-respaldo.txt`)
+  en un USB y en un segundo lugar seguro: sin ella, cada actualización obliga a desinstalar la app en
+  todos los celulares. Si el paquete se armó con `-WithApk`, descárgala desde
   `http://192.168.1.50:3000/descargas/warique.apk` (activa *Instalar apps desconocidas* para Chrome).
   La primera vez pide la dirección del servidor.
 - Los celulares deben estar en el **mismo Wi-Fi** que la PC. Usa una red para el personal

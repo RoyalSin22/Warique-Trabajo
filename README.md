@@ -170,14 +170,21 @@ flutter build apk --release --dart-define=API_URL=http://192.168.1.50:3000
 ### Android APK
 
 Without a release key the APK is signed with the machine's debug key, and Android refuses to update
-an app signed with a different key. Create one key per project and keep it (and its passwords)
-outside the repository:
+an app signed with a different key. Create the project's key **once**, on the machine that builds the
+APK (it never leaves it):
 
 ```powershell
-keytool -genkey -v -keystore C:\keys\warique.jks -keyalg RSA -keysize 2048 -validity 10000 -alias warique
+powershell -ExecutionPolicy Bypass -File deploy\windows\new-android-key.ps1
 ```
 
-Then `app/android/key.properties` (git-ignored):
+It finds `keytool` (JAVA_HOME, PATH or Android Studio's bundled JDK), creates
+`%USERPROFILE%\WariqueLlaves\warique.jks` (PKCS12, RSA 2048) with a random password passed through an
+environment variable, writes `app/android/key.properties` (refuses if git would not ignore it) and a
+`LEEME-respaldo.txt` with the password and the SHA-256 fingerprint. It never overwrites an existing key.
+Back up that folder in two safe places: losing the key means reinstalling the app on every phone. The
+CI's APK job creates its throwaway key with the same script and checks the APK carries that fingerprint.
+
+`app/android/key.properties` (git-ignored) has this format, if you set it up by hand on another machine:
 
 ```properties
 storeFile=C:/keys/warique.jks
