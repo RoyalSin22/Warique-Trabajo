@@ -9,7 +9,7 @@ Celulares / tablets (Wi-Fi del local)
         │  http://192.168.x.x:3000   (app web + API + tiempo real, un solo puerto)
         ▼
 PC del local (Windows 10/11)
-  ├─ Servicio "Warique"  → Node.js, cuenta LocalService, arranca solo y se reinicia ante fallos
+  ├─ Servicio "Warique"  → Node.js incluido, cuenta LocalService, arranca solo y se reinicia ante fallos
   ├─ Servicio "MySQL84"  → solo acepta conexiones de la misma PC (bind-address=127.0.0.1)
   └─ Tarea "Warique - Respaldo diario" → C:\Warique\backups + copia en Google Drive del dueño
 ```
@@ -33,7 +33,7 @@ instalación y la carga inicial toman unas 2 a 3 horas.
 - [ ] **1. IP fija.** Reserva DHCP para la PC en el router (sección 1, punto 4). Anota la IP: `__________`
 - [ ] **2. Google Drive.** Instalado en modo *Duplicar archivos*, verificación en dos pasos activada
       (sección 1, punto 5).
-- [ ] **3. Instalar Warique** con `install.ps1 -GoogleDrive` (sección 2). Al terminar, en
+- [ ] **3. Instalar Warique** con `Warique-Setup-<versión>.exe` (sección 2). Al terminar, en
       <https://drive.google.com> aparece `RespaldosWarique` con un `.zip`.
       Si ya había una versión instalada, usa `update.ps1` (sección 6).
 - [ ] Ejecuta `C:\Warique\scripts\status.ps1`: debe terminar con **Todo en orden**.
@@ -71,7 +71,7 @@ instalación y la carga inicial toman unas 2 a 3 horas.
 ## 1. Antes de instalar
 
 1. **Windows 10 u 11 actualizado**, con una cuenta de administrador.
-2. **Node.js 22 LTS** desde <https://nodejs.org> (instalador `.msi`, opciones por defecto).
+2. **Node.js:** no hace falta instalarlo; Warique trae su propia copia (Node.js 22 LTS).
 3. **MySQL 8.4 LTS** desde <https://dev.mysql.com/downloads/installer/>:
    - Tipo *Server only*, configurado **como servicio de Windows** que inicia con el sistema.
    - Anota la clave de `root`; el instalador de Warique la pide una vez y no la guarda.
@@ -98,9 +98,29 @@ instalación y la carga inicial toman unas 2 a 3 horas.
 
 ## 2. Instalar
 
+### Con el instalador (recomendado)
+
+Copia `Warique-Setup-<versión>.exe` a la PC del local (por USB o descargado del CI) y ábrelo con
+doble clic. Windows pedirá permiso de administrador.
+
+- **"Windows protegió su PC" / "Editor desconocido":** el instalador todavía no tiene firma digital.
+  Toca *Más información* → *Ejecutar de todas formas*. Antes, si quieres comprobar que el archivo es
+  el original, compara su SHA256 con el del archivo `.sha256` que lo acompaña:
+  `Get-FileHash .\Warique-Setup-<versión>.exe` en PowerShell.
+- El asistente pide la **clave de root de MySQL** y crea la **cuenta del dueño**. Luego ofrece copiar
+  los respaldos a **Google Drive** y marcar la red como **Privada**; deja ambas opciones marcadas si
+  la PC está en la red del local.
+- Se abre una ventana negra que muestra el avance (unos minutos). Al terminar, el asistente muestra
+  las direcciones para los celulares y deja abrir Warique en el navegador.
+- Si algo falla, el asistente lo dice y ofrece abrir el registro
+  (`C:\ProgramData\WariqueInstalador\resultado.log`). Corrige lo indicado y vuelve a ejecutarlo.
+
+### Con PowerShell (alternativa)
+
 En la máquina de desarrollo: `deploy\windows\build-release.ps1 -WithApk` genera
-`release\warique-<versión>.zip` y su `.sha256`. Copia el `.zip` a la PC del local, descomprímelo y,
-en **PowerShell como administrador** dentro de esa carpeta:
+`release\warique-<versión>.zip` y su `.sha256` (con `-WithInstaller`, en Windows con Inno Setup 6,
+también el `.exe`). Copia el `.zip` a la PC del local, descomprímelo y, en **PowerShell como
+administrador** dentro de esa carpeta:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1 -GoogleDrive
@@ -192,7 +212,9 @@ C:\Warique\scripts\restore.ps1 -BackupFile 'C:\Warique\backups\warique-20261003-
 
 ## 6. Actualizar a una versión nueva
 
-Descomprime el paquete nuevo y, como administrador, desde esa carpeta:
+Ejecuta el `Warique-Setup-<versión>.exe` nuevo: detecta que Warique ya está instalado y actualiza
+(solo pide la clave de root de MySQL). Con PowerShell: descomprime el paquete nuevo y, como
+administrador, desde esa carpeta:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\update.ps1

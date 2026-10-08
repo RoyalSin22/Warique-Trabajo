@@ -52,18 +52,23 @@ jobs:
         shell: powershell
         run: .github\scripts\setup-mysql-windows.ps1 -RootPassword $env:CI_MYSQL_ROOT_PASSWORD
 
-      - name: Build the release package with Windows PowerShell 5.1 (runs all tests)
-        shell: powershell
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File deploy\windows\build-release.ps1
-
-      - name: Extract the package and simulate Google Drive (mirror mode folder)
+      - name: Inno Setup 6 (for Warique-Setup.exe)
         shell: powershell
         run: |
-          $zip = Get-ChildItem release -Filter 'warique-*.zip' | Select-Object -First 1
-          Expand-Archive -LiteralPath $zip.FullName -DestinationPath "$env:RUNNER_TEMP\pkg"
-          New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\Mi unidad" | Out-Null
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --no-progress -y
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
-      - name: install.ps1 (unattended)
+      - name: Build the release package and installer with Windows PowerShell 5.1 (runs all tests)
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File deploy\windows\build-release.ps1 -WithInstaller
+
+      - name: Simulate Google Drive (mirror mode folder)
+        shell: powershell
+        run: New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\Mi unidad" | Out-Null
+
+      - name: Warique-Setup.exe (silent, as the restaurant PC would run it)
         shell: powershell
         env:
           WARIQUE_MYSQL_ADMIN_PASSWORD: ${{ env.CI_MYSQL_ROOT_PASSWORD }}
@@ -71,16 +76,22 @@ jobs:
           OWNER_FULL_NAME: Dueño CI
           OWNER_PASSWORD: ${{ env.CI_OWNER_PASSWORD }}
         run: |
-          $pkg = (Get-ChildItem "$env:RUNNER_TEMP\pkg" -Directory | Select-Object -First 1).FullName
-          powershell -NoProfile -ExecutionPolicy Bypass -File "$pkg\scripts\install.ps1" -GoogleDrive -MySqlService MySQL84 -AssumeYes
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $setup = Get-ChildItem release -Filter 'Warique-Setup-*.exe' | Select-Object -First 1
+          $process = Start-Process -FilePath $setup.FullName -Wait -PassThru -ArgumentList @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/GDRIVE=1', '/MYSQLSERVICE=MySQL84', "/LOG=$env:RUNNER_TEMP\setup.log")
+          $dir = "$env:ProgramData\WariqueInstalador"
+          if (Test-Path "$dir\resultado.log") { Get-Content "$dir\resultado.log" }
+          $result = if (Test-Path "$dir\resultado.txt") { Get-Content "$dir\resultado.txt" } else { @('missing') }
+          Write-Host "setup exit $($process.ExitCode), result: $($result -join ' | ')"
+          if ($process.ExitCode -ne 0 -or $result[0] -ne 'OK') { Get-Content "$env:RUNNER_TEMP\setup.log" -Tail 40; exit 1 }
 
       - name: Verify the installation
         shell: powershell
         env:
           WARIQUE_MYSQL_ADMIN_PASSWORD: ${{ env.CI_MYSQL_ROOT_PASSWORD }}
         run: |
-          $pkg = (Get-ChildItem "$env:RUNNER_TEMP\pkg" -Directory | Select-Object -First 1).FullName
+          # The installer extracted the package here: update/rollback checks reuse it
+          $pkg = "$env:ProgramData\WariqueInstalador"
           powershell -NoProfile -ExecutionPolicy Bypass -File .github\scripts\verify-windows-install.ps1 `
             -ReleaseDir $pkg -OwnerPassword $env:CI_OWNER_PASSWORD -DriveCopyDir "$env:USERPROFILE\Mi unidad\RespaldosWarique"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -89,7 +100,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: warique-release-windows
-          path: release/warique-*.zip*
+          path: |
+            release/warique-*.zip*
+            release/Warique-Setup-*.exe*
           retention-days: 14
 
       - name: Upload service logs (on failure)
