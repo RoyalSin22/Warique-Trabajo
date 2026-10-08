@@ -131,16 +131,9 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Throwaway signing key and key.properties (same format as the README)
-        run: |
-          keytool -genkeypair -v -keystore "$RUNNER_TEMP/warique-ci.jks" -keyalg RSA -keysize 2048 -validity 1 \
-            -alias warique -storepass ci-store-pass -keypass ci-store-pass -dname "CN=Warique CI, O=Warique, C=PE"
-          cat > app/android/key.properties <<PROPS
-          storeFile=$RUNNER_TEMP/warique-ci.jks
-          storePassword=ci-store-pass
-          keyAlias=warique
-          keyPassword=ci-store-pass
-          PROPS
+      - name: Throwaway signing key, made by the same script the owner runs (new-android-key.ps1)
+        shell: pwsh
+        run: pwsh -NoProfile -File deploy/windows/new-android-key.ps1 -KeyDir "$env:RUNNER_TEMP/keys" -Owner 'Warique CI'
 
       - name: flutter build apk --release
         working-directory: app
@@ -153,6 +146,11 @@ jobs:
           ls -la "$APK"
           "$BT/apksigner" verify --print-certs "$APK" | tee certs.txt
           grep -q "CN=Warique CI" certs.txt
+          # The APK is signed with the key the script created (its backup file records the fingerprint)
+          EXPECTED=$(grep -oP 'SHA-256: \K[0-9A-F:]+' "$RUNNER_TEMP/keys/LEEME-respaldo.txt" | tr -d ':' | tr 'A-F' 'a-f')
+          echo "expected $EXPECTED"
+          test -n "$EXPECTED"
+          grep -q "certificate SHA-256 digest: $EXPECTED" certs.txt
           "$BT/aapt" dump badging "$APK" | grep -E "^package:|application-label:" 
           "$BT/aapt" dump permissions "$APK" | tee perms.txt
           grep -q "android.permission.INTERNET" perms.txt
