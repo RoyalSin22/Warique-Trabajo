@@ -35,6 +35,7 @@ describe('CashService', () => {
     expect(prisma.payment.aggregate.mock.calls[0][0].where).toEqual({
       method: 'CASH',
       createdAt: { gte: new Date('2026-10-02T05:00:00.000Z'), lt: new Date('2026-10-03T05:00:00.000Z') },
+      voidedAt: null, // a voided cash payment never reached the drawer
     });
     expect(prisma.expense.aggregate.mock.calls[0][0].where).toEqual({
       businessDate: new Date('2026-10-02T00:00:00.000Z'),

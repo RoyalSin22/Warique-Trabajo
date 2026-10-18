@@ -7,6 +7,7 @@
     0 = respaldo y copia externa correctos
     1 = el respaldo fallo
     2 = respaldo local correcto, pero la copia externa no estaba disponible (USB desconectado)
+        o Google Drive no estaba abierto para subirla a la nube
 #>
 [CmdletBinding()]
 param(
@@ -76,6 +77,8 @@ try {
     Remove-OldBackups $config.backupDir
 
     $copied = $false
+    $copyTarget = $null       # 'drive' (Google Drive mirror folder) or 'folder' (USB, external disk...)
+    $uploaderRunning = $null  # drive only: was Google Drive running to upload it to the cloud?
     $exitCode = 0
     if (-not $NoCopy -and $config.backupCopyDir) {
         if (Test-Path -LiteralPath $config.backupCopyDir -PathType Container) {
@@ -85,6 +88,18 @@ try {
             Remove-OldBackups $config.backupCopyDir
             $copied = $true
             Write-BackupLog 'INFO' "Copia externa en $($config.backupCopyDir)"
+            if (Test-GoogleDriveMirrorPath $config.backupCopyDir) {
+                # The folder is on this same disk: it only reaches the cloud while Google Drive runs
+                $copyTarget = 'drive'
+                $uploaderRunning = Test-GoogleDriveRunning
+                if (-not $uploaderRunning) {
+                    $exitCode = 2
+                    Write-BackupLog 'WARN' ('Google Drive no esta abierto: el respaldo quedo en la carpeta pero no se sube a ' +
+                        'la nube hasta que el dueno inicie sesion en Windows.')
+                }
+            } else {
+                $copyTarget = 'folder'
+            }
         } else {
             $exitCode = 2
             Write-BackupLog 'WARN' "La carpeta de copia externa no esta disponible: $($config.backupCopyDir)"
@@ -93,11 +108,19 @@ try {
 
     # Safety copies (-NoCopy, e.g. before a restore) do not replace the nightly backup's status,
     # otherwise the owner would see "not copied to Google Drive" until the next night
-    if (-not $NoCopy) { Save-Status @{ ok = $true; file = $zip.Name; sizeBytes = $zip.Length; sha256 = $hash; copied = $copied; error = $null } }
+    if (-not $NoCopy) {
+        Save-Status @{
+            ok = $true; file = $zip.Name; sizeBytes = $zip.Length; sha256 = $hash; copied = $copied
+            copyTarget = $copyTarget; uploaderRunning = $uploaderRunning; error = $null
+        }
+    }
     exit $exitCode
 } catch {
     Write-BackupLog 'ERROR' $_.Exception.Message
-    Save-Status @{ ok = $false; file = $null; sizeBytes = 0; sha256 = $null; copied = $false; error = $_.Exception.Message }
+    Save-Status @{
+        ok = $false; file = $null; sizeBytes = 0; sha256 = $null; copied = $false
+        copyTarget = $null; uploaderRunning = $null; error = $_.Exception.Message
+    }
     exit 1
 } finally {
     if ($sqlFile -and (Test-Path -LiteralPath $sqlFile)) { Remove-Item -LiteralPath $sqlFile -Force }

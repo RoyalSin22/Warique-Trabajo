@@ -16,12 +16,13 @@ Map<String, dynamic> orderJson({
   String createdAt = '2026-10-03T15:00:00.000Z',
   List<Map<String, dynamic>>? payments,
   String? cancelReason,
+  int waiterId = 2,
 }) => {
   'id': id,
   'orderType': orderType,
   'tableId': orderType == 'DINE_IN' ? 3 : null,
   'customerName': orderType == 'TAKEAWAY' ? 'Juan' : null,
-  'waiterId': 2,
+  'waiterId': waiterId,
   'status': status,
   'paymentStatus': paymentStatus,
   'total': total,
@@ -31,7 +32,7 @@ Map<String, dynamic> orderJson({
   'updatedAt': updatedAt,
   'paidAt': null,
   'table': orderType == 'DINE_IN' ? {'id': 3, 'label': 'Mesa 3'} : null,
-  'waiter': {'id': 2, 'fullName': 'Rosa Mozo'},
+  'waiter': {'id': waiterId, 'fullName': 'Rosa Mozo'},
   'items': <Map<String, dynamic>>[
     {
       'id': 10,

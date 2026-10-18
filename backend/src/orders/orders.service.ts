@@ -52,6 +52,8 @@ export const ORDER_DETAIL_INCLUDE = {
       changeGiven: true,
       operationNumber: true,
       createdAt: true,
+      voidedAt: true,
+      voidReason: true,
     },
     orderBy: { createdAt: 'asc' },
   },

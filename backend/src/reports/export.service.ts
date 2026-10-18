@@ -7,6 +7,7 @@ import { OrderStatus, Role } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { businessDayRange } from '../common/utils/business-day';
 import { fromDateColumn, toDateColumn } from '../common/utils/date-column';
+import { ACTIVE_PAYMENT } from '../orders/active-payment';
 import { PrismaService } from '../prisma/prisma.service';
 import { cashCsv, dailySalesCsv, expensesCsv, ExportKind, paymentsCsv } from './export';
 import { dayRange } from './summary';
@@ -93,7 +94,10 @@ export class ExportService {
             where: { ...createdInRange, status: { not: OrderStatus.CANCELLED } },
             select: { createdAt: true, total: true },
           }),
-          this.prisma.payment.findMany({ where: createdInRange, select: { createdAt: true, method: true, amount: true } }),
+          this.prisma.payment.findMany({
+            where: { ...createdInRange, ...ACTIVE_PAYMENT },
+            select: { createdAt: true, method: true, amount: true },
+          }),
           this.prisma.expense.groupBy({ by: ['businessDate'], where: { ...businessDates, isVoid: false }, _sum: { amount: true } }),
         ]);
         return dailySalesCsv({

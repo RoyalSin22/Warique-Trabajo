@@ -48,12 +48,15 @@ instalación y la carga inicial toman unas 2 a 3 horas.
       (ej.: pescado 3 kg, limón 2 kg). Luego la cocina, en su pestaña *Insumos*, registra un
       **conteo** de cada uno: ese es el stock inicial.
 - [ ] Prueba completa con el personal: un pedido de mesa y uno para llevar, que la cocina los vea al
-      instante, cobro en efectivo y por Yape, y que aparezcan en *Cierre*.
+      instante **y suene**, cobro en efectivo y por Yape, y que aparezcan en *Cierre*. Con el volumen
+      del celular o tablet de cocina **al máximo**, y del celular de cada mozo audible.
 
 **Al día siguiente**
 
-- [ ] **6. Respaldo:** la tarjeta de arriba en *Cierre* está **verde** (el respaldo de las 18:30 se hizo
-      y se copió a Drive). Si sale roja, revisa la sección 5 antes de seguir.
+- [ ] **6. Respaldo:** la tarjeta de arriba en *Cierre* está **verde** (el respaldo de las 19:30 se hizo,
+      se copió a la carpeta de Drive y Google Drive estaba abierto para subirlo). Si sale roja, revisa
+      la sección 5 antes de seguir. Entra también a <https://drive.google.com> → *RespaldosWarique* y
+      confirma que está el archivo de anoche.
 
 **Primeros días de atención: marcha blanca**
 
@@ -91,10 +94,13 @@ instalación y la carga inicial toman unas 2 a 3 horas.
    3. Activa la **verificación en dos pasos** de esa cuenta de Google: los respaldos contienen las ventas
       y las claves cifradas del personal.
    4. Drive sube los archivos **solo mientras la sesión de Windows del dueño está iniciada**. Deja la PC
-      con la sesión del dueño abierta (bloqueada con Win+L, no cerrada).
+      con la sesión del dueño abierta (bloqueada con Win+L, no cerrada). Si la PC se reinicia (corte de
+      luz, Windows Update) y nadie inicia sesión, Warique sigue funcionando pero Drive no: el respaldo
+      queda en la PC y la tarjeta de *Cierre* se pone **roja** con «Google Drive NO estaba abierto».
 6. **Horario:** el local atiende de **11:00 a 18:00**. El instalador ya viene configurado para ese
    horario: Windows Update no reinicia la PC entre las 08:00 y las 22:00, y el respaldo diario corre a
-   las 18:30. Si la PC se apaga antes, el respaldo se hace apenas se vuelva a encender.
+   las **19:30**, después del cierre de caja (a más tardar 19:00), para que incluya el arqueo y los
+   gastos del día. Si la PC se apaga antes, el respaldo se hace apenas se vuelva a encender.
 
 ## 2. Instalar
 
@@ -135,7 +141,7 @@ y los datos de la cuenta del dueño. Al final muestra la dirección para los cel
 SYSTEM), para comprobar que de verdad llega a Google Drive. Después revisa en
 <https://drive.google.com> que aparezca la carpeta `RespaldosWarique` con un archivo `.zip`.
 
-Parámetros útiles: `-ActiveHoursStart 8 -ActiveHoursEnd 22 -BackupTime '18:30'` si cambia el horario,
+Parámetros útiles: `-ActiveHoursStart 8 -ActiveHoursEnd 22 -BackupTime '19:30'` si cambia el horario,
 `-MySqlService MySQL84` si hay más de un MySQL, `-Port 3000`,
 `-RetentionDays 30`, `-SkipWindowsSettings` si la PC la administra otra persona.
 
@@ -172,6 +178,11 @@ Parámetros útiles: `-ActiveHoursStart 8 -ActiveHoursEnd 22 -BackupTime '18:30'
   el dinero para el mercado. Abre la caja con ese monto y registra la compra en *Gastos* eligiendo
   **Caja**: el sistema ya la resta. Si abres la caja con lo que quedó **después** de comprar, la compra
   se restaría dos veces y el cierre mostraría un *Sobran* falso.
+- **Cobro mal registrado** (era Yape y se marcó efectivo, monto equivocado, otra mesa): solo el dueño
+  lo corrige. Abre el pedido (desde la lista de pedidos o tocando el pago en *Pagos del día*), toca la
+  flecha ↶ junto al cobro y escribe el motivo. El cobro queda **tachado** con su motivo, deja de contar
+  en la caja, en los reportes y en el CSV de ventas, y el pedido vuelve a quedar **por cobrar**: el mozo
+  registra el cobro correcto. Si el pedido se debe cancelar, primero anula sus cobros.
 - **Gastos:** en *Gestión → Gastos* (o tocando *Gastos* en *Cierre*) registra cada gasto el mismo día.
   Elige **Caja** si el dinero salió de la caja (baja lo que debe haber al cerrar) u **Otro** si pagaste
   con Yape, transferencia o de tu bolsillo. Una compra del mercado se registra como *Insumos* con una
@@ -188,8 +199,16 @@ Parámetros útiles: `-ActiveHoursStart 8 -ActiveHoursEnd 22 -BackupTime '18:30'
   Son archivos CSV que se abren con Excel o Google Sheets; en el celular quedan en *Descargas*.
 - **Ventas − gastos** en *Cierre* y *Estadísticas* es lo que entró menos lo que salió; no es la
   utilidad contable (una compra grande cuenta completa el día que se paga).
-- **Respaldo:** la tarjeta de arriba en *Cierre* sale **verde** si el respaldo de anoche se hizo y se
-  copió fuera de la PC; si sale **roja**, avisa a soporte ese mismo día.
+- **Respaldo:** la tarjeta de arriba en *Cierre* sale **verde** si el respaldo de anoche se hizo, se
+  copió a la carpeta de Drive y Google Drive estaba abierto para subirlo; si sale **roja**, avisa a
+  soporte ese mismo día. **Una vez por semana** entra a <https://drive.google.com> → *RespaldosWarique*
+  y mira que el archivo más reciente sea de anoche: es la única prueba de que de verdad está en la nube.
+- **Sonidos:** la cocina escucha un timbre con cada pedido nuevo, que se **repite cada 30 segundos**
+  hasta que alguien toque *Empezar*, y un zumbido si se cancela un pedido que tenía en cola. El mozo
+  que tomó el pedido escucha otro timbre (y el celular vibra) cuando la cocina lo marca *Listo*.
+  En el navegador, la primera vez que se abre la pantalla de cocina aparece *Activar*: tócalo una vez
+  (los navegadores no dejan sonar una página que nadie tocó). Mientras la pantalla de cocina esté
+  abierta, la tablet **no se apaga sola**; déjala enchufada.
 - **Personal:** en *Gestión → Usuarios* creas las cuentas de mozos y cocina, restableces claves y
   desactivas a quien ya no trabaja (su sesión se cierra al instante).
 - **La PC debe quedar encendida** durante la atención. Si se reinicia, Warique vuelve solo en
@@ -247,6 +266,9 @@ powershell -ExecutionPolicy Bypass -File C:\Warique\scripts\status.ps1
 | Las horas del reporte están corridas 5 h | MySQL no está en UTC | `default-time-zone='+00:00'` en `my.ini` y reiniciar MySQL |
 | "Último respaldo FALLÓ" | Disco lleno | `C:\Warique\logs\backup.log` |
 | Tarjeta roja "NO se copió" | Google Drive cerrado sesión, sin espacio o en modo «Transmitir» | Abrir Google Drive, revisar modo «Duplicar archivos» |
+| Tarjeta roja "Google Drive NO estaba abierto" | La PC se reinició y nadie inició sesión en Windows | Iniciar sesión con la cuenta del dueño; Drive sube lo pendiente solo |
+| La cocina no suena | Volumen bajo/silencio, o en el navegador falta tocar *Activar* | Subir el volumen; abrir *Cocina* y tocar *Activar* |
+| La tablet de cocina se apaga | Otra app en primer plano o batería en ahorro extremo | Dejar abierta la pantalla de cocina y la tablet enchufada |
 | Los `.zip` no aparecen en drive.google.com | La sesión de Windows del dueño estaba cerrada | Iniciar sesión; Drive sube lo pendiente solo |
 | El servicio se reinicia solo | Error de la aplicación | `C:\Warique\logs\warique.err.log` |
 

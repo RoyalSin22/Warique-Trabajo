@@ -95,11 +95,17 @@ export interface PaymentRow {
   operationNumber: string | null;
   registeredBy: string;
   target: string;
+  voidedAt: Date | null;
+  voidReason: string | null;
 }
 
+/** Voided payments stay listed (Anulado = Sí) so the accountant sees what was undone; the daily CSV leaves them out. */
 export function paymentsCsv(rows: PaymentRow[], utcOffsetMinutes: number): string {
   return toCsv(
-    ['Fecha', 'Hora', 'Pedido', 'Mesa / cliente', 'Método', 'Monto', 'Recibido', 'Vuelto', 'N.° de operación', 'Registró'],
+    [
+      'Fecha', 'Hora', 'Pedido', 'Mesa / cliente', 'Método', 'Monto', 'Recibido', 'Vuelto',
+      'N.° de operación', 'Registró', 'Anulado', 'Motivo de anulación',
+    ],
     rows.map((row) => {
       const { day, time } = localParts(row.createdAt, utcOffsetMinutes);
       return [
@@ -113,6 +119,8 @@ export function paymentsCsv(rows: PaymentRow[], utcOffsetMinutes: number): strin
         row.changeGiven === null ? null : money(row.changeGiven),
         row.operationNumber,
         row.registeredBy,
+        row.voidedAt ? 'Sí' : 'No',
+        row.voidReason,
       ];
     }),
   );

@@ -1,6 +1,6 @@
 // backend/src/orders/dto/payment.dto.ts
 import { PaymentMethod } from '@prisma/client';
-import { IsEnum, IsNumber, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { Trim } from '../../common/decorators/transform.decorators';
 
 const MONEY = { maxDecimalPlaces: 2, allowNaN: false, allowInfinity: false } as const;
@@ -27,4 +27,12 @@ export class CreatePaymentDto {
   @IsString()
   @Matches(/^[A-Za-z0-9-]{4,30}$/, { message: 'operationNumber must be 4-30 letters/digits' })
   operationNumber?: string;
+}
+
+export class VoidPaymentDto {
+  @Trim()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  reason!: string;
 }

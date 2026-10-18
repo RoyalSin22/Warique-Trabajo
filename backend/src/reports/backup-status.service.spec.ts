@@ -38,4 +38,21 @@ describe('BackupStatusService', () => {
     writeFileSync(file, JSON.stringify({ time: '2026-10-03T23:30:00', ok: false, error: 'disk full' }));
     expect(await service(file).read(now)).toMatchObject({ ok: false, error: 'disk full', needsAttention: true });
   });
+
+  it('flags a backup left in the Google Drive folder while Drive is not running', async () => {
+    const drive = { time: '2026-10-03T23:30:00', ok: true, copied: true, copyTarget: 'drive' };
+    writeFileSync(file, JSON.stringify({ ...drive, uploaderRunning: false }));
+    expect(await service(file).read(now)).toMatchObject({
+      copyTarget: 'drive',
+      uploaderRunning: false,
+      needsAttention: true,
+    });
+
+    writeFileSync(file, JSON.stringify({ ...drive, uploaderRunning: true }));
+    expect((await service(file).read(now)).needsAttention).toBe(false);
+
+    // status written by an older backup.ps1: no information, not an alarm
+    writeFileSync(file, JSON.stringify({ time: '2026-10-03T23:30:00', ok: true, copied: true }));
+    expect(await service(file).read(now)).toMatchObject({ copyTarget: null, uploaderRunning: null, needsAttention: false });
+  });
 });

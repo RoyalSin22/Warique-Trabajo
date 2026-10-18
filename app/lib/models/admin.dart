@@ -137,6 +137,8 @@ class PaymentRecord {
     this.amountReceived,
     this.changeGiven,
     this.operationNumber,
+    this.voidReason,
+    this.voidedAt,
   });
 
   factory PaymentRecord.fromJson(Map<String, dynamic> json) => PaymentRecord(
@@ -151,6 +153,8 @@ class PaymentRecord {
     registeredBy: json['registeredBy'] as String,
     target: json['target'] as String?,
     orderType: OrderType.fromApi(json['orderType'] as String),
+    voidedAt: json['voidedAt'] == null ? null : DateTime.parse(json['voidedAt'] as String).toLocal(),
+    voidReason: json['voidReason'] as String?,
   );
 
   final int id;
@@ -164,6 +168,10 @@ class PaymentRecord {
   final String registeredBy;
   final String? target;
   final OrderType orderType;
+  final DateTime? voidedAt;
+  final String? voidReason;
+
+  bool get isVoid => voidedAt != null;
 
   String get targetLabel => switch (orderType) {
     OrderType.dineIn => target ?? 'Mesa',
@@ -181,6 +189,8 @@ class BackupStatus {
     this.ageHours,
     this.file,
     this.error,
+    this.copyTarget,
+    this.uploaderRunning,
   });
 
   factory BackupStatus.fromJson(Map<String, dynamic> json) => BackupStatus(
@@ -192,6 +202,8 @@ class BackupStatus {
     ageHours: (json['ageHours'] as num?)?.toDouble(),
     file: json['file'] as String?,
     error: json['error'] as String?,
+    copyTarget: json['copyTarget'] as String?,
+    uploaderRunning: json['uploaderRunning'] as bool?,
   );
 
   final bool configured;
@@ -202,6 +214,14 @@ class BackupStatus {
   final double? ageHours;
   final String? file;
   final String? error;
+
+  /// 'drive' (Google Drive folder on this PC, uploaded by the Drive app) or 'folder' (USB/disk).
+  final String? copyTarget;
+
+  /// Drive only: false = the copy is sitting on this PC and is NOT reaching the cloud.
+  final bool? uploaderRunning;
+
+  bool get notUploading => copyTarget == 'drive' && uploaderRunning == false;
 }
 
 /// Owner dashboard for a range of business days (`GET /reports/summary`).

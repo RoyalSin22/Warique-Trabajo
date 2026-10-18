@@ -13,6 +13,7 @@ import '../../state/admin.dart';
 import '../../state/inventory.dart';
 import '../../state/realtime.dart';
 import '../widgets/common.dart';
+import '../waiter/order_detail_page.dart';
 import '../widgets/day_navigator.dart';
 import 'cash_card.dart';
 import 'expenses_page.dart';
@@ -165,6 +166,12 @@ class _BackupCard extends ConsumerWidget {
       message = 'El último respaldo es de ${ageLabel(status.ageHours!)}. ¿La PC estuvo apagada?';
     } else if (!status.copied) {
       message = 'Respaldo hecho ${ageLabel(status.ageHours!)}, pero NO se copió a Google Drive.';
+    } else if (status.notUploading) {
+      message =
+          'Respaldo hecho ${ageLabel(status.ageHours!)}, pero Google Drive NO estaba abierto: '
+          'quedó en esta PC y no se subió a la nube. Inicia sesión en Windows con la cuenta del dueño.';
+    } else if (status.copyTarget == 'drive') {
+      message = 'Respaldo al día: ${ageLabel(status.ageHours!)}, entregado a Google Drive para subirlo a la nube.';
     } else {
       message = 'Respaldo al día: ${ageLabel(status.ageHours!)}, con copia externa.';
     }
@@ -327,14 +334,16 @@ class _PaymentsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final shown = filter == null ? payments : payments.where((p) => p.method == filter).toList();
-    final total = shown.fold(Money.zero, (sum, p) => sum + p.amount);
+    final counted = shown.where((p) => !p.isVoid).toList();
+    final total = counted.fold(Money.zero, (sum, p) => sum + p.amount);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text('Pagos del día', style: theme.textTheme.titleMedium),
         Text(
-          'Concilia cada N.° de operación Yape/Plin con tu app del banco.',
+          'Concilia cada N.° de operación Yape/Plin con tu app del banco. '
+          'Toca un pago para abrir su pedido (ahí puedes anular un cobro equivocado).',
           style: theme.textTheme.bodySmall,
         ),
         const SizedBox(height: 8),
@@ -361,10 +370,26 @@ class _PaymentsSection extends StatelessWidget {
           for (final payment in shown)
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(payment.method == PaymentMethod.cash ? Icons.payments : Icons.qr_code_2),
-              title: Text('${payment.method.label} · ${payment.amount}'),
+              onTap: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute<void>(builder: (_) => OrderDetailPage(orderId: payment.orderId))),
+              leading: Icon(
+                payment.isVoid
+                    ? Icons.block
+                    : payment.method == PaymentMethod.cash
+                    ? Icons.payments
+                    : Icons.qr_code_2,
+                color: payment.isVoid ? theme.colorScheme.outline : null,
+              ),
+              title: Text(
+                '${payment.method.label} · ${payment.amount}',
+                style: payment.isVoid
+                    ? TextStyle(decoration: TextDecoration.lineThrough, color: theme.colorScheme.outline)
+                    : null,
+              ),
               subtitle: Text(
                 [
+                  if (payment.isVoid) 'ANULADO: ${payment.voidReason}',
                   '${timeLabel(payment.createdAt)} · #${payment.orderId} ${payment.targetLabel}',
                   if (payment.operationNumber != null) 'Op. ${payment.operationNumber}',
                   if (payment.changeGiven != null && payment.changeGiven!.isPositive)
@@ -387,7 +412,13 @@ class _PaymentsSection extends StatelessWidget {
           const Divider(),
           Row(
             children: [
-              Expanded(child: Text('Total (${shown.length} pagos)', style: theme.textTheme.titleSmall)),
+              Expanded(
+                child: Text(
+                  'Total (${counted.length} pagos'
+                  '${counted.length == shown.length ? '' : ', sin ${shown.length - counted.length} anulado(s)'})',
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
               Text(total.toString(), style: theme.textTheme.titleMedium),
             ],
           ),

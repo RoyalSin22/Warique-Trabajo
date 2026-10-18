@@ -228,6 +228,17 @@ function Find-GoogleDriveMirrorFolder([string]$UsersRoot = 'C:\Users') {
     return @($found)
 }
 
+# True when the path is inside a Google Drive for desktop mirror folder ("Duplicar archivos")
+function Test-GoogleDriveMirrorPath([string]$Path) {
+    return [bool]($Path -match '\\(My Drive|Mi unidad)(\\|$)')
+}
+
+# The mirror folder is on the same disk: only the Drive client (running in the owner's Windows
+# session) uploads it. SYSTEM sees every session's processes.
+function Test-GoogleDriveRunning {
+    return [bool](Get-Process -Name 'GoogleDriveFS' -ErrorAction SilentlyContinue)
+}
+
 # True when the path is on a Google Drive "Stream files" virtual drive
 function Test-GoogleDriveStreamPath([string]$Path) {
     if (-not $script:OnWindows) { return $false }

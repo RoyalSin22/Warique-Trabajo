@@ -123,4 +123,10 @@ class OrdersRepository {
     }, _idempotency(requestId));
     return Order.fromJson(json as Json);
   }
+
+  /// Owner only: undoes a payment registered by mistake; the order's balance comes back.
+  Future<Order> voidPayment(int orderId, int paymentId, String reason) async {
+    final json = await _api.patch('/orders/$orderId/payments/$paymentId/void', {'reason': reason.trim()});
+    return Order.fromJson(json as Json);
+  }
 }

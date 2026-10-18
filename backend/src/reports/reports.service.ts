@@ -6,6 +6,7 @@ import { fromDateColumn, toDateColumn } from '../common/utils/date-column';
 import { businessDayRange } from '../common/utils/business-day';
 import { fromCents, toCents } from '../common/utils/money';
 import { PrismaService } from '../prisma/prisma.service';
+import { ACTIVE_PAYMENT } from '../orders/active-payment';
 import { buildSummary, dayRange } from './summary';
 
 /** Longest range the dashboard accepts (one year). */
@@ -42,7 +43,7 @@ export class ReportsService {
       }),
       this.prisma.payment.groupBy({
         by: ['method'],
-        where: createdThatDay,
+        where: { ...createdThatDay, ...ACTIVE_PAYMENT },
         _count: { _all: true },
         _sum: { amount: true },
       }),
@@ -54,7 +55,7 @@ export class ReportsService {
         take: 10,
       }),
       this.prisma.payment.aggregate({
-        where: { order: validOrdersThatDay },
+        where: { order: validOrdersThatDay, ...ACTIVE_PAYMENT },
         _sum: { amount: true },
       }),
       this.prisma.expense.groupBy({
@@ -100,7 +101,8 @@ export class ReportsService {
 
   /**
    * Every payment registered that day, oldest first: the owner reconciles Yape/Plin operation
-   * numbers against the bank app and counts the cash at closing time.
+   * numbers against the bank app and counts the cash at closing time. Voided ones are listed
+   * (marked) so the owner sees what was undone, but they are not in any total.
    */
   async payments(date?: string) {
     const { date: day, start, end } = businessDayRange(date, this.utcOffsetMinutes);
@@ -115,6 +117,8 @@ export class ReportsService {
         changeGiven: true,
         operationNumber: true,
         createdAt: true,
+        voidedAt: true,
+        voidReason: true,
         registeredUser: { select: { fullName: true } },
         order: { select: { orderType: true, customerName: true, table: { select: { label: true } } } },
       },
@@ -157,7 +161,7 @@ export class ReportsService {
       }),
       this.prisma.payment.groupBy({
         by: ['method'],
-        where: inRange,
+        where: { ...inRange, ...ACTIVE_PAYMENT },
         _count: { _all: true },
         _sum: { amount: true },
       }),

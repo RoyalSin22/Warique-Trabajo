@@ -24,6 +24,8 @@ const FLUTTER_CSP = {
     styleSrc: ["'self'", "'unsafe-inline'"],
     imgSrc: ["'self'", 'data:', 'blob:'],
     fontSrc: ["'self'", 'data:'],
+    // Alert tones (assets) and the tiny looping video wakelock_plus uses to keep the kitchen screen on
+    mediaSrc: ["'self'", 'data:', 'blob:'],
     // ws:/wss: explicitly: older browsers do not match WebSockets with 'self'
     connectSrc: ["'self'", 'ws:', 'wss:'],
     workerSrc: ["'self'", 'blob:'],

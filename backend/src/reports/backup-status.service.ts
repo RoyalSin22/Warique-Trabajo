@@ -10,13 +10,17 @@ export interface BackupStatus {
   configured: boolean;
   /** Last run finished without errors */
   ok: boolean;
-  /** Needs the owner's attention: failed, missing, too old or not copied off the PC */
+  /** Needs the owner's attention: failed, missing, too old, not copied off the PC or not uploading */
   needsAttention: boolean;
   time: string | null;
   ageHours: number | null;
   file: string | null;
   sizeBytes: number | null;
   copied: boolean;
+  /** 'drive' = Google Drive mirror folder (same disk until uploaded), 'folder' = USB/external disk */
+  copyTarget: 'drive' | 'folder' | null;
+  /** drive only: Google Drive was running to upload it. false = it is NOT reaching the cloud */
+  uploaderRunning: boolean | null;
   error: string | null;
 }
 
@@ -26,6 +30,8 @@ interface StatusFile {
   file?: string | null;
   sizeBytes?: number;
   copied?: boolean;
+  copyTarget?: string | null;
+  uploaderRunning?: boolean | null;
   error?: string | null;
 }
 
@@ -57,16 +63,25 @@ export class BackupStatusService {
         : null;
     const ok = status.ok === true;
     const copied = status.copied === true;
+    const copyTarget = status.copyTarget === 'drive' || status.copyTarget === 'folder' ? status.copyTarget : null;
+    const uploaderRunning = typeof status.uploaderRunning === 'boolean' ? status.uploaderRunning : null;
 
     return {
       configured: true,
       ok,
-      needsAttention: !ok || !copied || ageHours === null || ageHours > STALE_AFTER_HOURS,
+      needsAttention:
+        !ok ||
+        !copied ||
+        ageHours === null ||
+        ageHours > STALE_AFTER_HOURS ||
+        (copyTarget === 'drive' && uploaderRunning === false),
       time: time ? time.toISOString() : null,
       ageHours,
       file: status.file ?? null,
       sizeBytes: status.sizeBytes ?? null,
       copied,
+      copyTarget,
+      uploaderRunning,
       error: status.error ?? null,
     };
   }
@@ -82,6 +97,8 @@ function emptyStatus(configured: boolean, error: string | null): BackupStatus {
     file: null,
     sizeBytes: null,
     copied: false,
+    copyTarget: null,
+    uploaderRunning: null,
     error,
   };
 }

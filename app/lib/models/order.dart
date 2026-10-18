@@ -119,6 +119,8 @@ class Payment {
     this.amountReceived,
     this.changeGiven,
     this.operationNumber,
+    this.voidedAt,
+    this.voidReason,
   });
 
   factory Payment.fromJson(Map<String, dynamic> json) => Payment(
@@ -129,6 +131,8 @@ class Payment {
     changeGiven: Money.tryParse(json['changeGiven']),
     operationNumber: json['operationNumber'] as String?,
     createdAt: DateTime.parse(json['createdAt'] as String).toLocal(),
+    voidedAt: json['voidedAt'] == null ? null : DateTime.parse(json['voidedAt'] as String).toLocal(),
+    voidReason: json['voidReason'] as String?,
   );
 
   final int id;
@@ -138,6 +142,12 @@ class Payment {
   final Money? changeGiven;
   final String? operationNumber;
   final DateTime createdAt;
+
+  /// Undone by the owner: still listed (crossed out) but it counts nowhere.
+  final DateTime? voidedAt;
+  final String? voidReason;
+
+  bool get isVoid => voidedAt != null;
 }
 
 class Order {
@@ -151,6 +161,7 @@ class Order {
     required this.waiterName,
     required this.createdAt,
     required this.updatedAt,
+    this.waiterId,
     this.tableId,
     this.tableLabel,
     this.customerName,
@@ -169,6 +180,7 @@ class Order {
       tableId: table?['id'] as int?,
       tableLabel: table?['label'] as String?,
       customerName: json['customerName'] as String?,
+      waiterId: waiter?['id'] as int?,
       waiterName: waiter?['fullName'] as String? ?? '',
       status: OrderStatus.fromApi(json['status'] as String),
       paymentStatus: PaymentStatus.fromApi(json['paymentStatus'] as String),
@@ -189,6 +201,9 @@ class Order {
   final int? tableId;
   final String? tableLabel;
   final String? customerName;
+
+  /// Who took the order: their phone is the one that rings when it is ready.
+  final int? waiterId;
   final String waiterName;
   final OrderStatus status;
   final PaymentStatus paymentStatus;
@@ -209,7 +224,8 @@ class Order {
       customerName == null || customerName!.isEmpty ? 'Para llevar' : 'Para llevar · $customerName',
   };
 
-  Money get paid => (payments ?? const <Payment>[]).fold(Money.zero, (sum, p) => sum + p.amount);
+  Money get paid =>
+      (payments ?? const <Payment>[]).where((p) => !p.isVoid).fold(Money.zero, (sum, p) => sum + p.amount);
 
   /// Null when payments were not loaded (list responses) and the order is partially paid.
   Money? get balance => switch (paymentStatus) {
@@ -226,7 +242,7 @@ class Order {
 
   bool canTransition(OrderStatus to, Role role) => orderTransitions[status]?[to]?.contains(role) ?? false;
 
-  /// Cancelling with payments needs a refund flow the backend does not have.
+  /// With payments the owner voids them first (a voided payment is how money goes back).
   bool canCancel(Role role) =>
       canTransition(OrderStatus.cancelled, role) && paymentStatus == PaymentStatus.unpaid;
 
@@ -241,6 +257,7 @@ class Order {
       tableId: newer.tableId,
       tableLabel: newer.tableLabel,
       customerName: newer.customerName,
+      waiterId: newer.waiterId,
       waiterName: newer.waiterName,
       status: newer.status,
       paymentStatus: newer.paymentStatus,
