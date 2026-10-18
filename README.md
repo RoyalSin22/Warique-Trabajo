@@ -88,6 +88,9 @@ are for a development machine.
 | PATCH | `/orders/:id/status` | per transition (see `orders/order-status.ts`) |
 | POST | `/orders/:id/payments` | WAITER, OWNER (accepts `Idempotency-Key`) |
 | PATCH | `/orders/:id/payments/:paymentId/void` | OWNER (`{ "reason": "..." }`; the order's payment status is recomputed) |
+| POST | `/orders/:id/items` | WAITER, OWNER; only while `PENDING`/`IN_PREPARATION` (accepts `Idempotency-Key`) |
+| PATCH | `/orders/:id/items/:itemId/cancel` | `PENDING`: WAITER, OWNER; afterwards OWNER only (`{ "reason", "quantity"? }`) |
+| POST | `/cash/reopen` | OWNER (clears the closing snapshot so late cash movements can be registered) |
 | GET | `/reports/daily?date=YYYY-MM-DD` | OWNER |
 | GET | `/reports/payments?date=YYYY-MM-DD` | OWNER (reconciliation list) |
 | GET | `/reports/summary?from=YYYY-MM-DD&to=YYYY-MM-DD` | OWNER (dashboard, up to 366 days) |
@@ -120,6 +123,10 @@ prefixed with `'` (CSV injection). The download link is signed with a key derive
 | Selling a dish does **not** deduct supplies (no recipes) | Counts and waste are registered by hand; recipes can come later |
 | A purchase (expense with `items`) is always `INSUMOS`, its amount is the sum of the lines, and its stock goes in within the same transaction (rows locked in id order: no deadlocks) | Expense and stock always agree |
 | Expenses are voided with a reason, never deleted; voiding a purchase takes its stock back out (refused if part of it was already used: count first) | Audit trail |
+| Order lines added after sending are marked (`added_at`); removed lines keep who/when/why (`cancelled_*`) and count in no total, report or kitchen view; the total never drops below what was paid and the last line cannot be removed | Orders change at the table without losing the audit trail |
+| Cash payments, cash expenses and their voids are refused on a day whose cash count is closed (`409`) until the owner reopens it | The counted snapshot cannot drift silently |
+| Changing or resetting a password increments `users.token_version`: older tokens and sockets are refused at once; sockets also close when their token expires | A lost phone is locked out immediately |
+| The kitchen's realtime feed and `GET /orders/:id` carry no payment details | Least privilege |
 | Payments are voided by the owner with a reason, never deleted; a voided payment is listed (crossed out) but counts in no balance, report, cash count or daily CSV | A wrong method or amount is fixed without losing the audit trail |
 | Expected cash = change fund + cash payments of the day − expenses paid `CASH` that day; closing snapshots expected, counted and the difference (negative = missing); closing again is a recount | The drawer is reconciled every day |
 | "Ventas − gastos" is a cash view, not accounting profit | A purchase counts fully on the day it is paid |

@@ -164,8 +164,15 @@ Parámetros útiles: `-ActiveHoursStart 8 -ActiveHoursEnd 22 -BackupTime '19:30'
 
 - **Al abrir:** en *Gestión → Menú*, toca el botón de *Habilitar todos* (flecha circular) para quitar
   los agotados del día anterior.
-- **Segunda ronda en una mesa:** un pedido enviado a cocina no se edita; en el detalle del pedido
-  toca el carrito (*Otro pedido para esta mesa*) y la mesa ya queda elegida.
+- **Agregar platos a un pedido:** mientras la cocina lo tiene (*Pendiente* o *En preparación*), en el
+  detalle del pedido toca *Agregar platos a este pedido* (ícono de lista con +): los platos nuevos se
+  suman al **mismo** pedido y la cocina los ve marcados **AGREGADO**, con timbre. Si el pedido ya está
+  *Listo* o *Entregado*, el botón cambia a *Otro pedido para esta mesa* (la mesa ya queda elegida).
+- **Quitar un plato** (se acabó, el cliente ya no lo quiere): en el detalle del pedido toca ⊖ junto al
+  plato, elige cuántas unidades y escribe el motivo. Mientras el pedido está *Pendiente* lo puede hacer
+  el mozo; **cuando la cocina ya empezó, solo el dueño**. El plato queda tachado con su motivo, el total
+  baja y la cocina recibe un aviso «NO preparar». No se puede quitar el único plato (en ese caso se
+  cancela el pedido) ni dejar el total por debajo de lo ya cobrado (primero se anula el cobro).
 - **Si se corta el Wi-Fi al enviar:** vuelve a tocar *Enviar a cocina* sin cambiar nada; el sistema
   reconoce el reintento y **no duplica** el pedido ni el pago.
 - **Al cerrar:** en la pestaña *Cierre* revisa ventas, cobrado y por cobrar. En *Pagos del día* filtra
@@ -183,6 +190,9 @@ Parámetros útiles: `-ActiveHoursStart 8 -ActiveHoursEnd 22 -BackupTime '19:30'
   flecha ↶ junto al cobro y escribe el motivo. El cobro queda **tachado** con su motivo, deja de contar
   en la caja, en los reportes y en el CSV de ventas, y el pedido vuelve a quedar **por cobrar**: el mozo
   registra el cobro correcto. Si el pedido se debe cancelar, primero anula sus cobros.
+- **Caja cerrada:** después de *Cerrar caja* el sistema **no acepta** cobros ni gastos en efectivo de
+  ese día (Yape y Plin sí), para que el arqueo no cambie a escondidas. Si faltó registrar algo, el
+  dueño toca *Reabrir caja* en la tarjeta del arqueo, registra lo que faltaba y vuelve a cerrar.
 - **Gastos:** en *Gestión → Gastos* (o tocando *Gastos* en *Cierre*) registra cada gasto el mismo día.
   Elige **Caja** si el dinero salió de la caja (baja lo que debe haber al cerrar) u **Otro** si pagaste
   con Yape, transferencia o de tu bolsillo. Una compra del mercado se registra como *Insumos* con una
@@ -210,7 +220,11 @@ Parámetros útiles: `-ActiveHoursStart 8 -ActiveHoursEnd 22 -BackupTime '19:30'
   (los navegadores no dejan sonar una página que nadie tocó). Mientras la pantalla de cocina esté
   abierta, la tablet **no se apaga sola**; déjala enchufada.
 - **Personal:** en *Gestión → Usuarios* creas las cuentas de mozos y cocina, restableces claves y
-  desactivas a quien ya no trabaja (su sesión se cierra al instante).
+  desactivas a quien ya no trabaja (su sesión se cierra al instante). **Si alguien pierde el
+  celular**, restablécele la clave: todas sus sesiones abiertas se cierran en ese momento. Lo mismo
+  pasa cuando alguien cambia su propia clave (en ese celular sigue conectado).
+- **Tablet que queda encendida de noche:** al día siguiente se actualiza sola con los pedidos del día;
+  si su sesión venció, pide ingresar de nuevo apenas se desbloquea la pantalla.
 - **La PC debe quedar encendida** durante la atención. Si se reinicia, Warique vuelve solo en
   1 o 2 minutos; los celulares se reconectan solos (punto verde arriba a la derecha).
 - **Punto rojo "Sin conexión"** en los celulares: revisa que la PC esté encendida y en el Wi-Fi.
@@ -221,15 +235,23 @@ Parámetros útiles: `-ActiveHoursStart 8 -ActiveHoursEnd 22 -BackupTime '19:30'
   y se copia a la carpeta externa. Si la PC estaba apagada, se hace apenas se encienda.
 - Respaldo manual (antes de algo riesgoso): `C:\Warique\scripts\backup.ps1 -Tag manual`
 - **Prueba de restauración una vez al mes**: es la única forma de saber que los respaldos sirven.
-  Hazla en otra PC con MySQL o fuera del horario de atención.
+  La forma segura, en la misma PC y **antes de abrir** (por ejemplo a las 10:00, cuando no hubo
+  movimiento desde el respaldo de las 19:30):
+  1. En *Cierre*, mira las ventas de ayer y anótalas.
+  2. Ejecuta `C:\Warique\scripts\restore.ps1` con el respaldo **diario de anoche** (ver abajo).
+  3. Entra a la app: *Cierre* de ayer debe mostrar las mismas ventas. Si es así, el respaldo sirve.
+  4. Si algo no cuadra, restaura el archivo `…-antes-de-restaurar.zip` que el script creó y avisa a
+     soporte.
 
 ### Restaurar
 
-Reemplaza **todos** los datos actuales por los del respaldo (antes guarda una copia del estado
-actual con la etiqueta `antes-de-restaurar`):
+Reemplaza **todos** los datos actuales por los del respaldo: borra la base y la carga desde el
+archivo, así que no se mezcla nada del estado actual. Antes guarda una copia del estado actual con la
+etiqueta `antes-de-restaurar`, y si el respaldo es de una versión anterior aplica después los cambios
+de base de datos que le faltan:
 
 ```powershell
-C:\Warique\scripts\restore.ps1 -BackupFile 'C:\Warique\backups\warique-20261003-233000-diario.zip'
+C:\Warique\scripts\restore.ps1 -BackupFile 'C:\Warique\backups\warique-20261003-193000-diario.zip'
 ```
 
 ## 6. Actualizar a una versión nueva
@@ -262,7 +284,9 @@ powershell -ExecutionPolicy Bypass -File C:\Warique\scripts\status.ps1
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|
 | Los celulares no abren la página | PC apagada, otro Wi-Fi, IP cambió, red "Pública" | `status.ps1`; revisar la reserva DHCP; marcar la red como Privada |
-| "Error del servidor" al iniciar sesión | MySQL detenido | `status.ps1`; iniciar el servicio MySQL84 |
+| "Error del servidor" al iniciar sesión | MySQL detenido | Se reinicia solo en 10–60 s; si no, `status.ps1` e iniciar **MySQL84 y luego Warique** (si MySQL se detiene, Windows también detiene Warique) |
+| "No se aceptan movimientos en efectivo" | La caja de ese día ya se cerró | El dueño toca *Reabrir caja*, registra y vuelve a cerrar |
+| "Tu sesión ya no es válida" | Le cambiaron o restablecieron la clave | Ingresar con la clave nueva |
 | Las horas del reporte están corridas 5 h | MySQL no está en UTC | `default-time-zone='+00:00'` en `my.ini` y reiniciar MySQL |
 | "Último respaldo FALLÓ" | Disco lleno | `C:\Warique\logs\backup.log` |
 | Tarjeta roja "NO se copió" | Google Drive cerrado sesión, sin espacio o en modo «Transmitir» | Abrir Google Drive, revisar modo «Duplicar archivos» |

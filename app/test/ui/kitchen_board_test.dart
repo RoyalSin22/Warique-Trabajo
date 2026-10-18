@@ -123,4 +123,50 @@ void main() {
     expect(alerts.played.map((p) => p.tone), [AlertTone.newOrder], reason: 'plays once as a test');
     expect(alerts.screenOn.last, isTrue);
   });
+
+  testWidgets(
+    'a dish added to an order rings and shows as AGREGADO; a removed one disappears with a warning',
+    (tester) async {
+      await pumpBoard(tester);
+      final added = [
+        ...defaultOrderItems(),
+        {
+          'id': 12,
+          'dishId': 7,
+          'dishName': 'Arroz con pato',
+          'unitPrice': '25',
+          'quantity': 1,
+          'subtotal': '25',
+          'notes': null,
+          'addedAt': '2026-10-03T15:04:00.000Z',
+        },
+      ];
+      realtime.emit(
+        RealtimeEvent.orderUpdated,
+        orderJson(id: 1, items: added, updatedAt: '2026-10-03T15:04:00.000Z'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('AGREGADO'), findsOneWidget);
+      expect(find.textContaining('Se agregó a #1'), findsOneWidget);
+      expect(alerts.played.map((p) => p.tone), [AlertTone.newOrder]);
+
+      final removed = [
+        for (final item in added)
+          item['id'] == 11
+              ? {...item, 'cancelledAt': '2026-10-03T15:05:00.000Z', 'cancelReason': 'se acabó'}
+              : item,
+      ];
+      realtime.emit(
+        RealtimeEvent.orderUpdated,
+        orderJson(id: 1, items: removed, updatedAt: '2026-10-03T15:05:00.000Z'),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Se quitó un plato'), findsOneWidget);
+      expect(find.textContaining('NO preparar 1× Chicha morada'), findsOneWidget);
+      expect(alerts.played.last.tone, AlertTone.cancelled);
+      await tester.tap(find.text('Entendido'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 × Chicha morada'), findsNothing, reason: 'the kitchen only sees what to cook');
+    },
+  );
 }

@@ -8,7 +8,7 @@
   tenia (si es de una version anterior) y vuelve a iniciar el servicio.
   Pide la clave del usuario administrador de MySQL (root), que no se guarda en ningun archivo.
 .EXAMPLE
-  .\restore.ps1 -BackupFile 'C:\Warique\backups\warique-20261003-233000-diario.zip'
+  .\restore.ps1 -BackupFile 'C:\Warique\backups\warique-20261003-193000-diario.zip'
 #>
 [CmdletBinding()]
 param(
