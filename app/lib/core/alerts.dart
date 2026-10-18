@@ -21,10 +21,12 @@ class Alerts {
   AudioPlayer? _player;
 
   /// On the web nothing plays until the page was touched once (browser autoplay rule).
-  bool get needsUserGesture => kIsWeb && !device.userHasInteracted();
+  bool get needsUserGesture => kIsWeb && device.audioLocked();
 
   Future<void> play(AlertTone tone, {bool vibrate = false}) async {
     if (vibrate) device.vibrate();
+    final played = await device.playTone('assets/${tone.asset}');
+    if (played != null) return; // the browser handled it (or refused it: logged there)
     try {
       final player = _player ??= AudioPlayer();
       await player.stop();

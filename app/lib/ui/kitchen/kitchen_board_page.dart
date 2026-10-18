@@ -42,7 +42,11 @@ class _KitchenBoardPageState extends ConsumerState<KitchenBoardPage> {
     _alerts.keepScreenOn(true);
     // Refreshes "hace N min" without touching the network, and repeats the alert
     _ticker = Timer.periodic(const Duration(seconds: 30), (_) {
-      setState(() => _now = DateTime.now());
+      setState(() {
+        _now = DateTime.now();
+        // Any tap on the page unlocks sound too, not only the banner's button
+        if (!_alertsArmed && !_alerts.needsUserGesture) _alertsArmed = true;
+      });
       if (_unstartedFresh().isNotEmpty) _alerts.play(AlertTone.newOrder);
     });
   }

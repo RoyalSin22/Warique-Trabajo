@@ -171,7 +171,8 @@ class _BackupCard extends ConsumerWidget {
           'Respaldo hecho ${ageLabel(status.ageHours!)}, pero Google Drive NO estaba abierto: '
           'quedó en esta PC y no se subió a la nube. Inicia sesión en Windows con la cuenta del dueño.';
     } else if (status.copyTarget == 'drive') {
-      message = 'Respaldo al día: ${ageLabel(status.ageHours!)}, entregado a Google Drive para subirlo a la nube.';
+      message =
+          'Respaldo al día: ${ageLabel(status.ageHours!)}, entregado a Google Drive para subirlo a la nube.';
     } else {
       message = 'Respaldo al día: ${ageLabel(status.ageHours!)}, con copia externa.';
     }
