@@ -28,4 +28,10 @@ export class CashController {
   close(@Body() dto: CloseCashDto, @CurrentUser() user: AuthenticatedUser) {
     return this.cashService.close(dto.date, dto.countedAmount, dto.notes, user);
   }
+
+  @Post('reopen')
+  @HttpCode(HttpStatus.OK)
+  reopen(@Body() dto: CashDayQueryDto) {
+    return this.cashService.reopen(dto.date);
+  }
 }

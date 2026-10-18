@@ -203,7 +203,7 @@ class _OrderTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final summary = order.items.map((item) => '${item.quantity}× ${item.dishName}').join(', ');
+    final summary = order.activeItems.map((item) => '${item.quantity}× ${item.dishName}').join(', ');
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: ListTile(

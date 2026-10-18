@@ -1,7 +1,7 @@
 // backend/src/expenses/expenses.service.ts
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ExpenseCategory, MovementType, Prisma } from '@prisma/client';
+import { ExpenseCategory, MovementType, PaidWith, Prisma } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { businessDayRange } from '../common/utils/business-day';
 import { fromDateColumn, toDateColumn } from '../common/utils/date-column';
@@ -10,6 +10,7 @@ import { fromMilli, toMilli } from '../common/utils/quantity';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { applyMovement, lockSupplies } from '../supplies/supplies.service';
+import { assertCashDayOpen } from '../cash/cash-guard';
 import { CreateExpenseDto } from './dto/expense.dto';
 
 const EXPENSE_INCLUDE = {
@@ -77,6 +78,8 @@ export class ExpensesService {
       amountCents = toCents(dto.amount);
     }
 
+    if (dto.paidWith === PaidWith.CASH) await assertCashDayOpen(this.prisma, day);
+
     const { expense, supplies } = await this.prisma.$transaction(async (tx) => {
       const locked = items.length ? await lockSupplies(tx, items.map((item) => item.supplyId)) : new Map();
       for (const item of items) {
@@ -138,6 +141,7 @@ export class ExpensesService {
         include: { items: { include: { supply: { select: { name: true } } } } },
       });
       if (expense.isVoid) throw new ConflictException('The expense is already void');
+      if (expense.paidWith === PaidWith.CASH) await assertCashDayOpen(tx, fromDateColumn(expense.businessDate));
 
       const locked = expense.items.length
         ? await lockSupplies(tx, expense.items.map((item) => item.supplyId))

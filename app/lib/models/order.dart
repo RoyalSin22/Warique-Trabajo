@@ -84,6 +84,9 @@ class OrderItem {
     required this.quantity,
     required this.subtotal,
     this.notes,
+    this.addedAt,
+    this.cancelledAt,
+    this.cancelReason,
   });
 
   factory OrderItem.fromJson(Map<String, dynamic> json) {
@@ -98,6 +101,9 @@ class OrderItem {
       // Generated column; computed locally if the driver did not return it
       subtotal: Money.tryParse(json['subtotal']) ?? unitPrice * quantity,
       notes: json['notes'] as String?,
+      addedAt: _localTime(json['addedAt']),
+      cancelledAt: _localTime(json['cancelledAt']),
+      cancelReason: json['cancelReason'] as String?,
     );
   }
 
@@ -108,7 +114,19 @@ class OrderItem {
   final int quantity;
   final Money subtotal;
   final String? notes;
+
+  /// Added after the order was sent: the kitchen shows it as new.
+  final DateTime? addedAt;
+
+  /// Removed (with a reason): listed crossed out, counts nowhere.
+  final DateTime? cancelledAt;
+  final String? cancelReason;
+
+  bool get isAdded => addedAt != null;
+  bool get isCancelled => cancelledAt != null;
 }
+
+DateTime? _localTime(Object? value) => value == null ? null : DateTime.parse(value as String).toLocal();
 
 class Payment {
   const Payment({
@@ -223,6 +241,23 @@ class Order {
     OrderType.takeaway =>
       customerName == null || customerName!.isEmpty ? 'Para llevar' : 'Para llevar · $customerName',
   };
+
+  /// Lines that count (the kitchen cooks these); removed ones stay in [items] for the record.
+  List<OrderItem> get activeItems => [
+    for (final item in items)
+      if (!item.isCancelled) item,
+  ];
+
+  int get activeUnits => activeItems.fold(0, (sum, item) => sum + item.quantity);
+
+  /// More dishes can join this order only while the kitchen has it; afterwards: another order.
+  bool get canAddItems => status == OrderStatus.pending || status == OrderStatus.inPreparation;
+
+  /// Before the kitchen starts, the waiter can remove a line; afterwards only the owner.
+  bool canRemoveItems(Role role) =>
+      status != OrderStatus.cancelled &&
+      activeUnits > 1 &&
+      (role == Role.owner || (role == Role.waiter && status == OrderStatus.pending));
 
   Money get paid =>
       (payments ?? const <Payment>[]).where((p) => !p.isVoid).fold(Money.zero, (sum, p) => sum + p.amount);

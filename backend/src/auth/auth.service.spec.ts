@@ -5,11 +5,13 @@ import { Test } from '@nestjs/testing';
 import { Role } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { AuthService } from './auth.service';
 
 describe('AuthService', () => {
   let service: AuthService;
-  const prisma = { user: { findUnique: jest.fn() } };
+  const prisma = { user: { findUnique: jest.fn(), update: jest.fn() } };
+  const realtime = { disconnectUser: jest.fn() };
   const jwt = { signAsync: jest.fn().mockResolvedValue('signed-token') };
 
   const buildUser = async (overrides: Record<string, unknown> = {}) => ({
@@ -19,6 +21,7 @@ describe('AuthService', () => {
     passwordHash: await bcrypt.hash('correct-password', 4),
     role: Role.OWNER,
     isActive: true,
+    tokenVersion: 3,
     ...overrides,
   });
 
@@ -29,6 +32,7 @@ describe('AuthService', () => {
         AuthService,
         { provide: PrismaService, useValue: prisma },
         { provide: JwtService, useValue: jwt },
+        { provide: RealtimeService, useValue: realtime },
       ],
     }).compile();
     service = moduleRef.get(AuthService);
@@ -41,7 +45,7 @@ describe('AuthService', () => {
 
     expect(result.accessToken).toBe('signed-token');
     expect(result.user).toEqual({ id: 1, username: 'owner', fullName: 'Owner', role: Role.OWNER });
-    expect(jwt.signAsync).toHaveBeenCalledWith({ sub: 1, username: 'owner', role: Role.OWNER });
+    expect(jwt.signAsync).toHaveBeenCalledWith({ sub: 1, username: 'owner', role: Role.OWNER, tv: 3 });
   });
 
   it('rejects an unknown username', async () => {
@@ -64,5 +68,17 @@ describe('AuthService', () => {
       service.login({ username: 'owner', password: 'correct-password' }),
     ).rejects.toThrow(UnauthorizedException);
     expect(jwt.signAsync).not.toHaveBeenCalled();
+  });
+
+  it('changing the password ends every other session and returns a fresh token', async () => {
+    prisma.user.findUnique.mockResolvedValue(await buildUser());
+    prisma.user.update.mockResolvedValue(await buildUser({ tokenVersion: 4 }));
+
+    const result = await service.changeOwnPassword(1, { currentPassword: 'correct-password', newPassword: 'New-pass-123' });
+
+    expect(prisma.user.update.mock.calls[0][0].data.tokenVersion).toEqual({ increment: 1 });
+    expect(realtime.disconnectUser).toHaveBeenCalledWith(1);
+    expect(jwt.signAsync).toHaveBeenCalledWith(expect.objectContaining({ tv: 4 }));
+    expect(result.accessToken).toBe('signed-token');
   });
 });

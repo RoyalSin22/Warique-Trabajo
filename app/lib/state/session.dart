@@ -56,6 +56,14 @@ class SessionNotifier extends AsyncNotifier<Session?> {
     state = AsyncData(Session(serverUrl: url, token: result.token, user: result.user));
   }
 
+  /// After changing the own password: the old token no longer works, this one does.
+  Future<void> replaceToken(String token) async {
+    final current = state.value;
+    if (current == null) return;
+    await _settings.setToken(token);
+    state = AsyncData(Session(serverUrl: current.serverUrl, token: token, user: current.user));
+  }
+
   Future<void> logout() async {
     await _settings.setToken(null);
     state = const AsyncData(null);

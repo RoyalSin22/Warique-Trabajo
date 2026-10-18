@@ -82,6 +82,19 @@ export class CashService {
     return this.day(range.date);
   }
 
+  /** Owner: undoes a closing so late cash movements can be registered; close again afterwards. */
+  async reopen(date: string | undefined) {
+    const range = this.range(date);
+    const businessDate = toDateColumn(range.date);
+    const session = await this.prisma.cashSession.findUnique({ where: { businessDate } });
+    if (!session?.closedAt) throw new ConflictException('The cash count for this day is not closed');
+    await this.prisma.cashSession.update({
+      where: { businessDate },
+      data: { expectedAmount: null, countedAmount: null, difference: null, closedBy: null, closedAt: null },
+    });
+    return this.day(range.date);
+  }
+
   private range(date?: string) {
     const range = businessDayRange(date, this.utcOffsetMinutes);
     const today = businessDayRange(undefined, this.utcOffsetMinutes).date;

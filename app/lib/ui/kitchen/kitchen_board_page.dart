@@ -92,6 +92,36 @@ class _KitchenBoardPageState extends ConsumerState<KitchenBoardPage> {
       _alerts.play(AlertTone.newOrder);
       showInfoSnack(context, 'Nuevo pedido: ${created.map((o) => '#${o.id} ${o.target}').join(', ')}');
     }
+    String lines(List<OrderItem> items) => items.map((i) => '${i.quantity}× ${i.dishName}').join(', ');
+    bool inKitchen(Order order) =>
+        order.status == OrderStatus.pending || order.status == OrderStatus.inPreparation;
+    final added = changes.itemsAdded.where((change) => inKitchen(change.order)).toList();
+    if (added.isNotEmpty) {
+      _alerts.play(AlertTone.newOrder);
+      showInfoSnack(
+        context,
+        added.map((c) => 'Se agregó a #${c.order.id} ${c.order.target}: ${lines(c.items)}').join('\n'),
+      );
+    }
+    final removed = changes.itemsRemoved.where((change) => inKitchen(change.order)).toList();
+    if (removed.isNotEmpty) {
+      _alerts.play(AlertTone.cancelled);
+      showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          icon: const Icon(Icons.remove_circle_outline, size: 40),
+          title: const Text('Se quitó un plato'),
+          content: Text(
+            [
+              for (final change in removed)
+                '#${change.order.id} ${change.order.target}: NO preparar ${lines(change.items)}'
+                    '${change.items.first.cancelReason == null ? '' : '\nMotivo: ${change.items.first.cancelReason}'}',
+            ].join('\n\n'),
+          ),
+          actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Entendido'))],
+        ),
+      );
+    }
     final cancelled = changes.cancelledInKitchen().toList();
     if (cancelled.isNotEmpty) {
       _alerts.play(AlertTone.cancelled);
@@ -104,7 +134,7 @@ class _KitchenBoardPageState extends ConsumerState<KitchenBoardPage> {
           content: Text(
             [
               for (final order in cancelled)
-                '#${order.id} ${order.target}: ${order.items.map((i) => '${i.quantity}× ${i.dishName}').join(', ')}'
+                '#${order.id} ${order.target}: ${order.activeItems.map((i) => '${i.quantity}× ${i.dishName}').join(', ')}'
                     '${order.cancelReason == null ? '' : '\nMotivo: ${order.cancelReason}'}',
             ].join('\n\n'),
           ),
@@ -328,13 +358,40 @@ class _KitchenCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            for (final item in order.items)
+            // Removed dishes are not shown: the kitchen only sees what it has to cook
+            for (final item in order.activeItems)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('${item.quantity} × ${item.dishName}', style: theme.textTheme.titleMedium),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            '${item.quantity} × ${item.dishName}',
+                            style: theme.textTheme.titleMedium,
+                          ),
+                        ),
+                        if (item.isAdded) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.tertiaryContainer,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'AGREGADO',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.onTertiaryContainer,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                     // An icon, not a "↳" character: the bundled offline font has no arrow glyphs
                     if (item.notes != null)
                       Row(

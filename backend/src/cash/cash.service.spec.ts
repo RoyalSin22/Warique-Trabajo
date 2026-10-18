@@ -70,6 +70,18 @@ describe('CashService', () => {
     await expect(service.open(date, 50, owner)).rejects.toThrow('already closed');
   });
 
+  it('reopens a closed day (clears the snapshot) and refuses one that is not closed', async () => {
+    prisma.cashSession.findUnique.mockResolvedValue({ closedAt: null });
+    await expect(service.reopen(date)).rejects.toThrow('not closed');
+
+    prisma.cashSession.findUnique.mockResolvedValueOnce({ closedAt: new Date() }).mockResolvedValue(null);
+    await service.reopen(date);
+    expect(prisma.cashSession.update).toHaveBeenCalledWith({
+      where: { businessDate: expect.any(Date) },
+      data: { expectedAmount: null, countedAmount: null, difference: null, closedBy: null, closedAt: null },
+    });
+  });
+
   it('rejects future days', async () => {
     await expect(service.day('2999-01-01')).rejects.toThrow(BadRequestException);
   });

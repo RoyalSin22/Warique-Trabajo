@@ -32,8 +32,9 @@ export class CreateDishDto {
   @MaxLength(255)
   description?: string;
 
+  /** At least S/ 0.01: an order with total 0 could never be paid and would stay "por cobrar". */
   @IsNumber({ maxDecimalPlaces: 2, allowNaN: false, allowInfinity: false })
-  @Min(0)
+  @Min(0.01, { message: 'price must be greater than 0' })
   @Max(99999.99)
   price!: number;
 }

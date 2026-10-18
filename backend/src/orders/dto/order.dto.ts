@@ -64,6 +64,30 @@ export class CreateOrderDto {
   items!: CreateOrderItemDto[];
 }
 
+export class AddOrderItemsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @ValidateNested({ each: true })
+  @Type(() => CreateOrderItemDto)
+  items!: CreateOrderItemDto[];
+}
+
+export class CancelOrderItemDto {
+  @Trim()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(150)
+  reason!: string;
+
+  /** Units to remove; all of the line when omitted. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(99)
+  quantity?: number;
+}
+
 export class UpdateOrderStatusDto {
   @IsEnum(OrderStatus)
   status!: OrderStatus;

@@ -116,6 +116,10 @@ class InventoryRepository {
     await _api.post('/cash/open', {'date': date, 'openingAmount': openingAmount.toJson()}) as _Json,
   );
 
+  /// Undoes a closing so late cash movements can be registered; close (count) again afterwards.
+  Future<CashDay> reopenCash(String date) async =>
+      CashDay.fromJson(await _api.post('/cash/reopen', {'date': date}) as _Json);
+
   Future<CashDay> closeCash(String date, Money countedAmount, {String? notes}) async => CashDay.fromJson(
     await _api.post('/cash/close', {
           'date': date,

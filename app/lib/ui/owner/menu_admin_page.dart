@@ -317,7 +317,12 @@ Future<bool> showDishDialog(
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d{0,5}([.,]\d{0,2})?'))],
                 decoration: const InputDecoration(labelText: 'Precio', prefixText: 'S/ '),
-                validator: (value) => Money.tryParse(value) == null ? 'Precio inválido' : null,
+                // An order with total 0 could never be paid: it would stay "por cobrar"
+                validator: (value) => switch (Money.tryParse(value)) {
+                  null => 'Precio inválido',
+                  final money when !money.isPositive => 'El precio debe ser mayor que 0',
+                  _ => null,
+                },
               ),
               DropdownButtonFormField<int>(
                 initialValue: categoryId,

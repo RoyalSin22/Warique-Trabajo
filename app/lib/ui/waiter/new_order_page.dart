@@ -12,9 +12,18 @@ import '../widgets/common.dart';
 import '../widgets/text_controllers.dart';
 import 'cart.dart';
 
-/// Builds a new order. Pops with the created [Order].
+/// Builds a new order, or more dishes for [addTo]. Pops with the created/updated [Order].
 class NewOrderPage extends ConsumerStatefulWidget {
-  const NewOrderPage({super.key, this.initialTableId, this.initialCustomerName, this.initialType});
+  const NewOrderPage({
+    super.key,
+    this.initialTableId,
+    this.initialCustomerName,
+    this.initialType,
+    this.addTo,
+  });
+
+  /// Adding to an order the kitchen still has: no target to choose, same order number.
+  final Order? addTo;
 
   /// Pre-selected target, e.g. "otro pedido para esta mesa" from an order's detail.
   final int? initialTableId;
@@ -89,7 +98,7 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
 
   String? _validationError(Map<int, Dish> menu) {
     if (_cart.isEmpty) return 'Agrega al menos un plato';
-    if (_type == OrderType.dineIn && _tableId == null) return 'Selecciona una mesa';
+    if (widget.addTo == null && _type == OrderType.dineIn && _tableId == null) return 'Selecciona una mesa';
     if (_cart.unavailable(menu).isNotEmpty) return 'Hay platos agotados en el pedido';
     return null;
   }
@@ -103,16 +112,18 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
     setState(() => _submitting = true);
     _requestId ??= newRequestId();
     try {
-      final order = await ref
-          .read(ordersRepositoryProvider)
-          .create(
-            orderType: _type,
-            tableId: _tableId,
-            customerName: _type == OrderType.takeaway ? _customerController.text : null,
-            notes: _notesController.text,
-            items: _cart.toItems(),
-            requestId: _requestId,
-          );
+      final repository = ref.read(ordersRepositoryProvider);
+      final addTo = widget.addTo;
+      final order = addTo != null
+          ? await repository.addItems(addTo.id, _cart.toItems(), requestId: _requestId)
+          : await repository.create(
+              orderType: _type,
+              tableId: _tableId,
+              customerName: _type == OrderType.takeaway ? _customerController.text : null,
+              notes: _notesController.text,
+              items: _cart.toItems(),
+              requestId: _requestId,
+            );
       if (mounted) Navigator.of(context).pop(order);
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -147,12 +158,15 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
       builder: (context) => _ReviewSheet(
         cart: _cart,
         menu: menu,
-        target: _type == OrderType.dineIn
-            ? (ref.read(tablesProvider).value ?? const <DiningTable>[])
-                  .firstWhere((t) => t.id == _tableId, orElse: () => const DiningTable(id: 0, label: 'Mesa'))
-                  .label
-            : 'Para llevar',
-        notesController: _notesController,
+        target: switch (widget.addTo) {
+          final order? => 'Agregar al pedido #${order.id} · ${order.target}',
+          null when _type == OrderType.dineIn =>
+            (ref.read(tablesProvider).value ?? const <DiningTable>[])
+                .firstWhere((t) => t.id == _tableId, orElse: () => const DiningTable(id: 0, label: 'Mesa'))
+                .label,
+          null => 'Para llevar',
+        },
+        notesController: widget.addTo == null ? _notesController : null,
       ),
     );
     if (confirmed == true && mounted) await _submit(menu);
@@ -161,46 +175,72 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
   @override
   Widget build(BuildContext context) {
     final menuAsync = ref.watch(menuProvider);
+    final addTo = widget.addTo;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Nuevo pedido'), actions: const [ConnectionIndicator()]),
-      body: Column(
-        children: [
-          _TargetSelector(
-            type: _type,
-            tableId: _tableId,
-            customerController: _customerController,
-            onTypeChanged: (type) => _change(() => _type = type),
-            onTableChanged: (id) => _change(() => _tableId = id),
+    // An accidental back swipe must not throw away a cart the waiter spent a minute on
+    return PopScope(
+      canPop: _cart.isEmpty || _submitting,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final discard = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('¿Descartar pedido?'),
+            content: const Text('Los platos elegidos no se enviaron a cocina.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Seguir aquí')),
+              FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Descartar')),
+            ],
           ),
-          const Divider(height: 1),
-          Expanded(
-            child: switch (menuAsync) {
-              AsyncValue(value: final dishes?) => _MenuTabs(
-                dishes: dishes,
-                cart: _cart,
-                onAdd: _add,
-                onRemove: (dish) => _change(() => _cart.remove(dish.id)),
-                onNote: _editNote,
-              ),
-              AsyncError(:final error) => ErrorRetryView(
-                error: error,
-                onRetry: () => ref.invalidate(menuProvider),
-              ),
-              _ => const Center(child: CircularProgressIndicator()),
-            },
-          ),
-        ],
-      ),
-      bottomNavigationBar: switch (menuAsync.value) {
-        final dishes? => _CartBar(
-          cart: _cart,
-          menu: {for (final dish in dishes) dish.id: dish},
-          submitting: _submitting,
-          onReview: _review,
-        ),
-        null => null,
+        );
+        if (discard == true && context.mounted) Navigator.of(context).pop();
       },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(addTo == null ? 'Nuevo pedido' : 'Agregar al pedido #${addTo.id}'),
+          actions: const [ConnectionIndicator()],
+        ),
+        body: Column(
+          children: [
+            if (addTo == null)
+              _TargetSelector(
+                type: _type,
+                tableId: _tableId,
+                customerController: _customerController,
+                onTypeChanged: (type) => _change(() => _type = type),
+                onTableChanged: (id) => _change(() => _tableId = id),
+              )
+            else
+              ListTile(leading: const Icon(Icons.add_shopping_cart), title: Text(addTo.target)),
+            const Divider(height: 1),
+            Expanded(
+              child: switch (menuAsync) {
+                AsyncValue(value: final dishes?) => _MenuTabs(
+                  dishes: dishes,
+                  cart: _cart,
+                  onAdd: _add,
+                  onRemove: (dish) => _change(() => _cart.remove(dish.id)),
+                  onNote: _editNote,
+                ),
+                AsyncError(:final error) => ErrorRetryView(
+                  error: error,
+                  onRetry: () => ref.invalidate(menuProvider),
+                ),
+                _ => const Center(child: CircularProgressIndicator()),
+              },
+            ),
+          ],
+        ),
+        bottomNavigationBar: switch (menuAsync.value) {
+          final dishes? => _CartBar(
+            cart: _cart,
+            menu: {for (final dish in dishes) dish.id: dish},
+            submitting: _submitting,
+            onReview: _review,
+          ),
+          null => null,
+        },
+      ),
     );
   }
 }
@@ -483,7 +523,9 @@ class _ReviewSheet extends StatelessWidget {
   final Cart cart;
   final Map<int, Dish> menu;
   final String target;
-  final TextEditingController notesController;
+
+  /// Null when adding to an existing order (it already has its note).
+  final TextEditingController? notesController;
 
   @override
   Widget build(BuildContext context) {
@@ -512,11 +554,12 @@ class _ReviewSheet extends StatelessWidget {
               ],
             ),
           ),
-          TextField(
-            controller: notesController,
-            maxLength: 255,
-            decoration: const InputDecoration(labelText: 'Nota general del pedido (opcional)'),
-          ),
+          if (notesController != null)
+            TextField(
+              controller: notesController,
+              maxLength: 255,
+              decoration: const InputDecoration(labelText: 'Nota general del pedido (opcional)'),
+            ),
           Row(
             children: [
               Expanded(child: Text('Total estimado', style: Theme.of(context).textTheme.titleMedium)),

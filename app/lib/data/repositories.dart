@@ -18,8 +18,13 @@ class AuthRepository {
 
   Future<AppUser> me() async => AppUser.fromJson(await _api.get('/auth/me') as Json);
 
-  Future<void> changeOwnPassword(String currentPassword, String newPassword) =>
-      _api.patch('/auth/password', {'currentPassword': currentPassword, 'newPassword': newPassword});
+  /// Returns this device's new token: every other session of the account (a lost phone) ends.
+  Future<String> changeOwnPassword(String currentPassword, String newPassword) async {
+    final json =
+        await _api.patch('/auth/password', {'currentPassword': currentPassword, 'newPassword': newPassword})
+            as Json;
+    return json['accessToken'] as String;
+  }
 }
 
 class MenuRepository {
@@ -96,6 +101,23 @@ class OrdersRepository {
       if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
       'items': [for (final item in items) item.toJson()],
     }, _idempotency(requestId));
+    return Order.fromJson(json as Json);
+  }
+
+  /// More dishes for an order the kitchen has not finished (same order, marked as added).
+  Future<Order> addItems(int id, List<NewOrderItem> items, {String? requestId}) async {
+    final json = await _api.post('/orders/$id/items', {
+      'items': [for (final item in items) item.toJson()],
+    }, _idempotency(requestId));
+    return Order.fromJson(json as Json);
+  }
+
+  /// Removes a line, or [quantity] units of it, with a reason.
+  Future<Order> cancelItem(int id, int itemId, String reason, {int? quantity}) async {
+    final json = await _api.patch('/orders/$id/items/$itemId/cancel', {
+      'reason': reason.trim(),
+      'quantity': ?quantity,
+    });
     return Order.fromJson(json as Json);
   }
 

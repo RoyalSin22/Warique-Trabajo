@@ -114,6 +114,12 @@ if (-not $health) {
 Copy-Item -Path (Join-Path $PSScriptRoot '*.ps1') -Destination (Join-Path $InstallDir 'scripts') -Force
 Copy-Migrations $ReleaseDir $InstallDir
 
+# 0.4.0: MySQL restarts by itself after a crash (installs before 0.4.0 did not set it)
+if ($config.mysqlService -and (Get-Service -Name $config.mysqlService -ErrorAction SilentlyContinue)) {
+    Set-MySqlServiceRecovery $config.mysqlService
+    Write-Ok "MySQL ($($config.mysqlService)) se reinicia solo si falla"
+}
+
 # 0.3.0: the nightly backup moved from 18:30 to 19:30 (after the cash count, done by 19:00).
 # Only the old default is moved; a time the owner chose with -BackupTime is kept.
 $backupTask = Get-ScheduledTask -TaskName 'Warique - Respaldo diario' -ErrorAction SilentlyContinue

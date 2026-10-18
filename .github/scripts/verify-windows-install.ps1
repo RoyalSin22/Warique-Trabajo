@@ -168,6 +168,41 @@ Check 'owner voids a payment (migration 002): the order owes again and totals sk
     Write-Host "      order $($order.paymentStatus), collected $($daily.collectedTotal), second void: $again"
     $order.paymentStatus -eq 'UNPAID' -and [decimal]$daily.collectedTotal -eq 0 -and [decimal]$daily.sales -eq 31 -and $again -eq 409
 }
+Check 'MySQL restarts by itself after a crash (service recovery actions)' {
+    $config = Get-Content "$InstallDir\config\deploy.json" -Raw | ConvertFrom-Json
+    $failure = (& sc.exe qfailure $config.mysqlService) -join ' '
+    Write-Host "      $($failure -replace '\s+', ' ')"
+    $failure -match 'RESTART'
+}
+Check 'order edits (migration 003): add a dish, remove one; kitchen and waiter limits' {
+    $rosa = Api POST '/auth/login' @{ username = 'rosa'; password = 'Rosa-pass-123' }
+    $r = @{ Authorization = "Bearer $($rosa.accessToken)" }
+    $dish = (Api GET '/dishes' $null $auth)[0]
+    $table = (Api GET '/tables' $null $auth)[0]
+    $order = Api POST '/orders' @{ orderType = 'DINE_IN'; tableId = $table.id; items = @(@{ dishId = $dish.id; quantity = 2 }) } ($r + @{ 'Idempotency-Key' = 'ci-edit-0001' })
+    $added = Api POST "/orders/$($order.id)/items" @{ items = @(@{ dishId = $dish.id; quantity = 1 }) } ($r + @{ 'Idempotency-Key' = 'ci-edit-0002' })
+    $newLine = @($added.items | Where-Object { $_.addedAt })[0]
+    $removed = Api PATCH "/orders/$($order.id)/items/$($newLine.id)/cancel" @{ reason = 'ya no quiere' } $r
+    Api PATCH "/orders/$($order.id)/status" @{ status = 'IN_PREPARATION' } $auth | Out-Null
+    $firstLine = @($removed.items | Where-Object { -not $_.addedAt })[0]
+    $waiterAfterStart = try { Api PATCH "/orders/$($order.id)/items/$($firstLine.id)/cancel" @{ reason = 'se acabo'; quantity = 1 } $r | Out-Null; 'accepted' }
+                        catch { [int]$_.Exception.Response.StatusCode }
+    $owner = Api PATCH "/orders/$($order.id)/items/$($firstLine.id)/cancel" @{ reason = 'se acabo'; quantity = 1 } $auth
+    Write-Host "      totals: $($order.total) -> $($added.total) -> $($removed.total) -> $($owner.total); waiter after start: $waiterAfterStart"
+    [decimal]$added.total -eq 3 * [decimal]$dish.price -and [decimal]$removed.total -eq 2 * [decimal]$dish.price -and
+        $waiterAfterStart -eq 403 -and [decimal]$owner.total -eq [decimal]$dish.price
+}
+# (no extra logins here: the API allows 5 per minute and per address)
+Check 'resetting a password ends that person''s open sessions' {
+    $rosa = Api POST '/auth/login' @{ username = 'rosa'; password = 'Rosa-pass-123' }
+    $user = (Api GET '/users' $null $auth) | Where-Object username -eq 'rosa'
+    Api PATCH "/users/$($user.id)/password" @{ password = 'Rosa-pass-456' } $auth | Out-Null
+    $old = try { Api GET '/auth/me' $null @{ Authorization = "Bearer $($rosa.accessToken)" } | Out-Null; 'accepted' }
+           catch { [int]$_.Exception.Response.StatusCode }
+    Api PATCH "/users/$($user.id)/password" @{ password = 'Rosa-pass-123' } $auth | Out-Null
+    Write-Host "      old token after reset: $old"
+    $old -eq 401
+}
 Check 'status.ps1 warns while Google Drive for desktop is closed' {
     $output = & powershell -NoProfile -ExecutionPolicy Bypass -File "$InstallDir\scripts\status.ps1" 2>&1 | Out-String
     $LASTEXITCODE -eq 1 -and $output -match 'Google Drive para escritorio NO esta abierto'
@@ -201,12 +236,17 @@ Check 'restore.ps1 brings back the data of a backup' {
     if ($LASTEXITCODE -ne 0) { throw "backup exit $LASTEXITCODE" }
     $zip = Get-ChildItem "$InstallDir\backups" -Filter '*-manual.zip' | Sort-Object LastWriteTime | Select-Object -Last 1
     Api POST '/categories' @{ name = 'Creada despues del respaldo' } $auth | Out-Null
+    # A table that is not in the backup must not survive the restore (the database is recreated)
+    $config = Get-Content "$InstallDir\config\deploy.json" -Raw | ConvertFrom-Json
+    & "$($config.mysqlBinDir)\mysql.exe" -uroot "--password=$env:WARIQUE_MYSQL_ADMIN_PASSWORD" "--execute=CREATE TABLE $($config.database).ci_stray (id INT)"
     & powershell -NoProfile -ExecutionPolicy Bypass -File "$InstallDir\scripts\restore.ps1" -BackupFile $zip.FullName -Force
     if ($LASTEXITCODE -ne 0) { throw "restore exit $LASTEXITCODE" }
     $owner2 = Api POST '/auth/login' @{ username = 'duenio'; password = $OwnerPassword }
     $names = (Api GET '/categories?includeInactive=true' $null @{ Authorization = "Bearer $($owner2.accessToken)" }).name
-    Write-Host "      categories after restore: $($names -join ', ')"
-    ($names -contains 'Fondos') -and -not ($names -contains 'Creada despues del respaldo')
+    $stray = & "$($config.mysqlBinDir)\mysql.exe" -uroot "--password=$env:WARIQUE_MYSQL_ADMIN_PASSWORD" --batch --skip-column-names `
+        "--execute=SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$($config.database)' AND table_name = 'ci_stray'"
+    Write-Host "      categories after restore: $($names -join ', '); stray table left: $stray"
+    ($names -contains 'Fondos') -and -not ($names -contains 'Creada despues del respaldo') -and $stray -eq '0'
 }
 Check 'safety backup before restore did not turn the owner card red' {
     $status = Get-Content "$InstallDir\logs\ultimo-respaldo.json" -Raw | ConvertFrom-Json
