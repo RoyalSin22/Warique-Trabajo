@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/alerts.dart';
 import '../../models/order.dart';
 import '../../state/orders.dart';
+import '../../state/session.dart';
 import '../widgets/common.dart';
 import '../widgets/order_watchers.dart';
 import 'new_order_page.dart';
@@ -40,12 +42,19 @@ class _WaiterOrdersPageState extends ConsumerState<WaiterOrdersPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Waiters only see the "ready" alert; the change itself is already on screen
+    // Waiters only see the "ready" alert; the change itself is already on screen.
+    // Only the phone of who took the order rings and vibrates; the rest just see the message.
     ref.listen(ordersProvider, (previous, next) {
       final before = previous?.value;
       final after = next.value;
       if (before == null || after == null) return;
-      for (final order in OrderChanges(before, after).becameReady()) {
+      final ready = OrderChanges(before, after).becameReady().toList();
+      if (ready.isEmpty) return;
+      final myId = ref.read(currentUserProvider).id;
+      if (ready.any((order) => order.waiterId == myId)) {
+        ref.read(alertsProvider).play(AlertTone.ready, vibrate: true);
+      }
+      for (final order in ready) {
         showInfoSnack(context, '¡Listo para entregar! #${order.id} · ${order.target}');
       }
     });

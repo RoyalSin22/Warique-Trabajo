@@ -41,11 +41,27 @@ describe('detail exports', () => {
           operationNumber: '00123',
           registeredBy: 'Rosa',
           target: 'Mesa 2',
+          voidedAt: null,
+          voidReason: null,
+        },
+        {
+          createdAt: new Date('2026-10-02T17:10:00Z'),
+          orderId: 8,
+          method: PaymentMethod.CASH,
+          amount: '15',
+          amountReceived: '20',
+          changeGiven: '5',
+          operationNumber: null,
+          registeredBy: 'Rosa',
+          target: 'Mesa 3',
+          voidedAt: new Date('2026-10-02T17:20:00Z'),
+          voidReason: 'era Yape',
         },
       ],
       -300,
     );
-    expect(lines(csv)[1]).toBe('2026-10-02,12:05,7,Mesa 2,Plin,22.00,,,00123,Rosa');
+    expect(lines(csv)[1]).toBe('2026-10-02,12:05,7,Mesa 2,Plin,22.00,,,00123,Rosa,No,');
+    expect(lines(csv)[2]).toBe('2026-10-02,12:10,8,Mesa 3,Efectivo,15.00,20.00,5.00,,Rosa,Sí,era Yape');
   });
 
   it('expenses list voided ones with their reason and the supply lines', () => {

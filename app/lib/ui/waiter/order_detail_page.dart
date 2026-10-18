@@ -46,14 +46,18 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     }
   }
 
-  Future<void> _run(Future<Order> Function() action, String successMessage) async {
+  Future<void> _run(
+    Future<Order> Function() action,
+    String successMessage, {
+    String Function(Order updated)? successMessageOf,
+  }) async {
     setState(() => _busy = true);
     try {
       final updated = await action();
       ref.read(ordersProvider.notifier).upsert(updated);
       if (mounted) {
         setState(() => _loaded = updated);
-        showInfoSnack(context, successMessage);
+        showInfoSnack(context, successMessageOf?.call(updated) ?? successMessage);
       }
     } on ApiException catch (error) {
       if (mounted) showErrorSnack(context, error);
@@ -86,13 +90,43 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
   );
 
   Future<void> _cancel(Order order) async {
-    final reason = await showDialog<String>(context: context, builder: (_) => const _CancelDialog());
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (_) => const _ReasonDialog(
+        title: 'Cancelar pedido',
+        hint: 'Ej.: el cliente se retiró',
+        confirmLabel: 'Cancelar pedido',
+        maxLength: 255,
+      ),
+    );
     if (reason == null) return;
     await _run(
       () => ref
           .read(ordersRepositoryProvider)
           .changeStatus(order.id, OrderStatus.cancelled, cancelReason: reason),
       'Pedido #${order.id} cancelado',
+    );
+  }
+
+  /// Owner only: a payment registered by mistake (wrong method, amount or order).
+  Future<void> _voidPayment(Order order, Payment payment) async {
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (_) => _ReasonDialog(
+        title: 'Anular cobro',
+        message:
+            '${payment.method.label} · ${payment.amount}\n'
+            'Deja de contar en la caja y en los reportes; el pedido vuelve a quedar con saldo.',
+        hint: 'Ej.: era Yape, no efectivo',
+        confirmLabel: 'Anular cobro',
+        maxLength: 150, // VoidPaymentDto
+      ),
+    );
+    if (reason == null) return;
+    await _run(
+      () => ref.read(ordersRepositoryProvider).voidPayment(order.id, payment.id, reason),
+      'Cobro anulado',
+      successMessageOf: (updated) => 'Cobro anulado. Saldo: ${updated.balance ?? '—'}',
     );
   }
 
@@ -215,8 +249,23 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
               ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(payment.method == PaymentMethod.cash ? Icons.payments : Icons.qr_code_2),
-                title: Text('${payment.method.label} · ${payment.amount}'),
+                leading: Icon(
+                  payment.isVoid
+                      ? Icons.block
+                      : payment.method == PaymentMethod.cash
+                      ? Icons.payments
+                      : Icons.qr_code_2,
+                  color: payment.isVoid ? Theme.of(context).colorScheme.outline : null,
+                ),
+                title: Text(
+                  '${payment.method.label} · ${payment.amount}',
+                  style: payment.isVoid
+                      ? TextStyle(
+                          decoration: TextDecoration.lineThrough,
+                          color: Theme.of(context).colorScheme.outline,
+                        )
+                      : null,
+                ),
                 subtitle: Text(
                   [
                     timeLabel(payment.createdAt),
@@ -224,8 +273,16 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                     if (payment.changeGiven != null && payment.changeGiven!.isPositive)
                       'vuelto ${payment.changeGiven}',
                     if (payment.operationNumber != null) 'op. ${payment.operationNumber}',
+                    if (payment.isVoid) 'ANULADO: ${payment.voidReason}',
                   ].join(' · '),
                 ),
+                trailing: role == Role.owner && !payment.isVoid
+                    ? IconButton(
+                        tooltip: 'Anular cobro',
+                        icon: const Icon(Icons.undo),
+                        onPressed: _busy ? null : () => _voidPayment(order, payment),
+                      )
+                    : null,
               ),
           ],
         ],
@@ -300,14 +357,27 @@ class _AmountRow extends StatelessWidget {
   }
 }
 
-class _CancelDialog extends StatefulWidget {
-  const _CancelDialog();
+/// Asks for the reason of a destructive action (cancel an order, void a payment).
+class _ReasonDialog extends StatefulWidget {
+  const _ReasonDialog({
+    required this.title,
+    required this.hint,
+    required this.confirmLabel,
+    required this.maxLength,
+    this.message,
+  });
+
+  final String title;
+  final String? message;
+  final String hint;
+  final String confirmLabel;
+  final int maxLength;
 
   @override
-  State<_CancelDialog> createState() => _CancelDialogState();
+  State<_ReasonDialog> createState() => _ReasonDialogState();
 }
 
-class _CancelDialogState extends State<_CancelDialog> {
+class _ReasonDialogState extends State<_ReasonDialog> {
   final _controller = TextEditingController();
 
   @override
@@ -320,20 +390,27 @@ class _CancelDialogState extends State<_CancelDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Cancelar pedido'),
-    content: TextField(
-      controller: _controller,
-      autofocus: true,
-      maxLength: 255,
-      decoration: const InputDecoration(labelText: 'Motivo', hintText: 'Ej.: el cliente se retiró'),
-      onChanged: (_) => setState(() {}),
+    title: Text(widget.title),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (widget.message != null) ...[Text(widget.message!), const SizedBox(height: 12)],
+        TextField(
+          controller: _controller,
+          autofocus: true,
+          maxLength: widget.maxLength,
+          decoration: InputDecoration(labelText: 'Motivo', hintText: widget.hint),
+          onChanged: (_) => setState(() {}),
+        ),
+      ],
     ),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Volver')),
       FilledButton(
         onPressed: _valid ? () => Navigator.pop(context, _controller.text.trim()) : null,
         style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
-        child: const Text('Cancelar pedido'),
+        child: Text(widget.confirmLabel),
       ),
     ],
   );

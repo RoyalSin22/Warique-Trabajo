@@ -7,6 +7,7 @@ import { businessDayRange } from '../common/utils/business-day';
 import { fromDateColumn, toDateColumn } from '../common/utils/date-column';
 import { fromCents, toCents } from '../common/utils/money';
 import { PrismaService } from '../prisma/prisma.service';
+import { ACTIVE_PAYMENT } from '../orders/active-payment';
 import { cashBalance } from './cash';
 
 const SESSION_INCLUDE = {
@@ -91,7 +92,7 @@ export class CashService {
   private async balance(range: { date: string; start: Date; end: Date }, openingCents: number) {
     const [payments, expenses] = await Promise.all([
       this.prisma.payment.aggregate({
-        where: { method: PaymentMethod.CASH, createdAt: { gte: range.start, lt: range.end } },
+        where: { method: PaymentMethod.CASH, createdAt: { gte: range.start, lt: range.end }, ...ACTIVE_PAYMENT },
         _sum: { amount: true },
       }),
       this.prisma.expense.aggregate({

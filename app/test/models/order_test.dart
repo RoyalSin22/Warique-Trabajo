@@ -34,6 +34,33 @@ void main() {
     expect(order.createdAt.isUtc, isFalse); // converted to device time for display
   });
 
+  test('a voided payment is listed but does not count as paid', () {
+    final order = Order.fromJson(
+      orderJson(
+        paymentStatus: 'PARTIAL',
+        payments: [
+          for (final (id, voidedAt) in [(1, '2026-10-03T15:10:00.000Z'), (2, null)])
+            {
+              'id': id,
+              'method': 'YAPE',
+              'amount': '15',
+              'amountReceived': null,
+              'changeGiven': null,
+              'operationNumber': '12345$id',
+              'createdAt': '2026-10-03T15:05:00.000Z',
+              'voidedAt': voidedAt,
+              'voidReason': voidedAt == null ? null : 'monto equivocado',
+            },
+        ],
+      ),
+    );
+
+    expect(order.payments!.first.isVoid, isTrue);
+    expect(order.payments!.first.voidReason, 'monto equivocado');
+    expect(order.paid, Money.parse('15'));
+    expect(order.balance, Money.parse('25'));
+  });
+
   test('balance is unknown for a partially paid order loaded from the list', () {
     final order = Order.fromJson(orderJson(paymentStatus: 'PARTIAL'));
     expect(order.payments, isNull);

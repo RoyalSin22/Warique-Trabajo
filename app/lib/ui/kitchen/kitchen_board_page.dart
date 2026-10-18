@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/alerts.dart';
 import '../../models/order.dart';
 import '../../state/orders.dart';
 import '../../state/session.dart';
@@ -23,21 +24,50 @@ class _KitchenBoardPageState extends ConsumerState<KitchenBoardPage> {
   static const lateAfterMinutes = 20;
 
   late final Timer _ticker;
+  late final Alerts _alerts;
   DateTime _now = DateTime.now();
   final _busy = <int>{};
+
+  /// New orders nobody has started yet: they ring again on every tick until someone taps "Empezar".
   final _fresh = <int>{};
+
+  /// Web only: false until the page is touched once (browsers block sound before that).
+  late bool _alertsArmed;
 
   @override
   void initState() {
     super.initState();
-    // Refreshes "hace N min" without touching the network
-    _ticker = Timer.periodic(const Duration(seconds: 30), (_) => setState(() => _now = DateTime.now()));
+    _alerts = ref.read(alertsProvider);
+    _alertsArmed = !_alerts.needsUserGesture;
+    _alerts.keepScreenOn(true);
+    // Refreshes "hace N min" without touching the network, and repeats the alert
+    _ticker = Timer.periodic(const Duration(seconds: 30), (_) {
+      setState(() {
+        _now = DateTime.now();
+        // Any tap on the page unlocks sound too, not only the banner's button
+        if (!_alertsArmed && !_alerts.needsUserGesture) _alertsArmed = true;
+      });
+      if (_unstartedFresh().isNotEmpty) _alerts.play(AlertTone.newOrder);
+    });
   }
 
   @override
   void dispose() {
     _ticker.cancel();
+    _alerts.keepScreenOn(false);
     super.dispose();
+  }
+
+  /// Fresh orders still pending (another kitchen device may have started them already).
+  Iterable<Order> _unstartedFresh() => (ref.read(ordersProvider).value ?? const <Order>[]).where(
+    (order) => _fresh.contains(order.id) && order.status == OrderStatus.pending,
+  );
+
+  /// Must run inside the tap: that is what lets the browser play sound and keep the screen on.
+  void _armAlerts() {
+    _alerts.play(AlertTone.newOrder);
+    _alerts.keepScreenOn(true);
+    setState(() => _alertsArmed = true);
   }
 
   Future<void> _advance(Order order, OrderStatus to) async {
@@ -59,10 +89,12 @@ class _KitchenBoardPageState extends ConsumerState<KitchenBoardPage> {
     final created = changes.created.where((o) => o.status == OrderStatus.pending).toList();
     if (created.isNotEmpty) {
       setState(() => _fresh.addAll(created.map((o) => o.id)));
+      _alerts.play(AlertTone.newOrder);
       showInfoSnack(context, 'Nuevo pedido: ${created.map((o) => '#${o.id} ${o.target}').join(', ')}');
     }
     final cancelled = changes.cancelledInKitchen().toList();
     if (cancelled.isNotEmpty) {
+      _alerts.play(AlertTone.cancelled);
       // Critical for the kitchen: stop cooking it
       showDialog<void>(
         context: context,
@@ -120,6 +152,21 @@ class _KitchenBoardPageState extends ConsumerState<KitchenBoardPage> {
         cooking: list.where((o) => o.status == OrderStatus.inPreparation).toList(),
         readyCount: list.where((o) => o.status == OrderStatus.ready).length,
         column: column,
+        banner: _alertsArmed
+            ? null
+            : MaterialBanner(
+                leading: const Icon(Icons.volume_off),
+                content: const Text(
+                  'Toca "Activar" para que suenen los pedidos nuevos y la pantalla no se apague.',
+                ),
+                actions: [
+                  FilledButton.icon(
+                    onPressed: _armAlerts,
+                    icon: const Icon(Icons.volume_up),
+                    label: const Text('Activar'),
+                  ),
+                ],
+              ),
         onRefresh: () => ref.read(ordersProvider.notifier).refresh().catchError((Object e) {
           if (context.mounted) showErrorSnack(context, e);
         }),
@@ -140,6 +187,7 @@ class _Layout extends StatelessWidget {
     required this.readyCount,
     required this.column,
     required this.onRefresh,
+    this.banner,
   });
 
   final List<Order> pending;
@@ -147,6 +195,16 @@ class _Layout extends StatelessWidget {
   final int readyCount;
   final Widget Function(List<Order>, String) column;
   final VoidCallback onRefresh;
+  final Widget? banner;
+
+  Widget _withBanner(Widget body) => banner == null
+      ? body
+      : Column(
+          children: [
+            banner!,
+            Expanded(child: body),
+          ],
+        );
 
   @override
   Widget build(BuildContext context) {
@@ -182,13 +240,15 @@ class _Layout extends StatelessWidget {
           );
           return Scaffold(
             appBar: AppBar(title: const Text('Cocina'), actions: actions),
-            body: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                titled(pendingTitle, column(pending, 'Sin pedidos pendientes')),
-                const VerticalDivider(width: 1),
-                titled(cookingTitle, column(cooking, 'Nada en preparación')),
-              ],
+            body: _withBanner(
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  titled(pendingTitle, column(pending, 'Sin pedidos pendientes')),
+                  const VerticalDivider(width: 1),
+                  titled(cookingTitle, column(cooking, 'Nada en preparación')),
+                ],
+              ),
             ),
           );
         }
@@ -205,8 +265,10 @@ class _Layout extends StatelessWidget {
                 ],
               ),
             ),
-            body: TabBarView(
-              children: [column(pending, 'Sin pedidos pendientes'), column(cooking, 'Nada en preparación')],
+            body: _withBanner(
+              TabBarView(
+                children: [column(pending, 'Sin pedidos pendientes'), column(cooking, 'Nada en preparación')],
+              ),
             ),
           ),
         );

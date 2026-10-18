@@ -113,6 +113,16 @@ if (-not $health) {
 # Scripts and service wrapper are updated only after the new app is confirmed healthy
 Copy-Item -Path (Join-Path $PSScriptRoot '*.ps1') -Destination (Join-Path $InstallDir 'scripts') -Force
 Copy-Migrations $ReleaseDir $InstallDir
+
+# 0.3.0: the nightly backup moved from 18:30 to 19:30 (after the cash count, done by 19:00).
+# Only the old default is moved; a time the owner chose with -BackupTime is kept.
+$backupTask = Get-ScheduledTask -TaskName 'Warique - Respaldo diario' -ErrorAction SilentlyContinue
+if ($backupTask -and $backupTask.Triggers.Count -eq 1 -and
+    ([datetime]$backupTask.Triggers[0].StartBoundary).ToString('HH:mm') -eq '18:30') {
+    Set-ScheduledTask -TaskName 'Warique - Respaldo diario' -Trigger (New-ScheduledTaskTrigger -Daily -At '19:30') | Out-Null
+    Write-Ok 'Respaldo diario movido a las 19:30 (despues del cierre de caja)'
+}
+
 Copy-Item -LiteralPath (Join-Path $ReleaseDir 'VERSION') -Destination $InstallDir -Force
 $config.version = $newVersion
 Save-DeployConfig $InstallDir $config

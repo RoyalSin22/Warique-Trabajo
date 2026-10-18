@@ -95,14 +95,15 @@ Check 'ACL: logs writable by the service' {
         $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -eq 'S-1-5-19' }
     "$($rule.FileSystemRights)" -match 'Modify'
 }
-Check 'backup task runs as SYSTEM at 18:30' {
+Check 'backup task runs as SYSTEM at 19:30' {
     $task = Get-ScheduledTask -TaskName 'Warique - Respaldo diario'
-    $task.Principal.UserId -eq 'SYSTEM' -and ([datetime]$task.Triggers[0].StartBoundary).ToString('HH:mm') -eq '18:30'
+    $task.Principal.UserId -eq 'SYSTEM' -and ([datetime]$task.Triggers[0].StartBoundary).ToString('HH:mm') -eq '19:30'
 }
 Check 'install-time backup ran as SYSTEM and reached the Google Drive folder' {
     $status = Get-Content "$InstallDir\logs\ultimo-respaldo.json" -Raw | ConvertFrom-Json
     Write-Host "      $($status | ConvertTo-Json -Compress)"
-    $status.ok -and $status.copied -and (Test-Path -LiteralPath (Join-Path $DriveCopyDir $status.file))
+    $status.ok -and $status.copied -and (Test-Path -LiteralPath (Join-Path $DriveCopyDir $status.file)) -and
+        $status.copyTarget -eq 'drive'
 }
 
 # ------------------------------------------------------------------ Web app and API
@@ -134,8 +135,12 @@ Check 'business flow: menu, table, waiter, order (idempotent), Yape payment, rep
     $report = Api GET '/reports/daily' $null $auth
     $payments = Api GET '/reports/payments' $null $auth
     $backup = Api GET '/reports/backup-status' $null $auth
-    Write-Host "      sales $($report.sales), op $($payments.payments[0].operationNumber), backup ok=$($backup.ok) copied=$($backup.copied)"
-    [decimal]$report.sales -eq 31 -and $payments.payments[0].operationNumber -eq 'OP-123456' -and $backup.ok -and $backup.copied -and -not $backup.needsAttention
+    Write-Host ("      sales $($report.sales), op $($payments.payments[0].operationNumber), backup ok=$($backup.ok) " +
+        "copied=$($backup.copied) target=$($backup.copyTarget) uploader=$($backup.uploaderRunning)")
+    # The runner has no Google Drive client: the copy is in the folder but would not reach the
+    # cloud, which is exactly what must turn the owner's card red
+    [decimal]$report.sales -eq 31 -and $payments.payments[0].operationNumber -eq 'OP-123456' -and $backup.ok -and
+        $backup.copied -and $backup.copyTarget -eq 'drive' -and $backup.uploaderRunning -eq $false -and $backup.needsAttention
 }
 Check 'accents survive the whole stack (UTF-8)' { (Api GET '/dishes' $null $auth)[0].name -eq 'Ají de gallina' }
 Check 'expenses, supplies and cash count (migration 001 applied by install.ps1)' {
@@ -154,6 +159,23 @@ Check 'expenses, supplies and cash count (migration 001 applied by install.ps1)'
 Check 'installed copy of the migrations for status.ps1' {
     Test-Path "$InstallDir\database\migrations\001_expenses_supplies_cash.sql"
 }
+Check 'owner voids a payment (migration 002): the order owes again and totals skip it' {
+    $payment = (Api GET '/reports/payments' $null $auth).payments[0]
+    $order = Api PATCH "/orders/$($payment.orderId)/payments/$($payment.id)/void" @{ reason = 'prueba CI' } $auth
+    $daily = Api GET '/reports/daily' $null $auth
+    $again = try { Api PATCH "/orders/$($payment.orderId)/payments/$($payment.id)/void" @{ reason = 'otra' } $auth | Out-Null; 'accepted' }
+             catch { [int]$_.Exception.Response.StatusCode }
+    Write-Host "      order $($order.paymentStatus), collected $($daily.collectedTotal), second void: $again"
+    $order.paymentStatus -eq 'UNPAID' -and [decimal]$daily.collectedTotal -eq 0 -and [decimal]$daily.sales -eq 31 -and $again -eq 409
+}
+Check 'status.ps1 warns while Google Drive for desktop is closed' {
+    $output = & powershell -NoProfile -ExecutionPolicy Bypass -File "$InstallDir\scripts\status.ps1" 2>&1 | Out-String
+    $LASTEXITCODE -eq 1 -and $output -match 'Google Drive para escritorio NO esta abierto'
+}
+# Stand-in for the Drive client from here on: a process with its name is all status.ps1 looks for
+Copy-Item "$env:SystemRoot\System32\PING.EXE" "$env:RUNNER_TEMP\GoogleDriveFS.exe" -Force
+Start-Process -FilePath "$env:RUNNER_TEMP\GoogleDriveFS.exe" -ArgumentList '-n', '100000', '127.0.0.1' -WindowStyle Hidden
+Start-Sleep -Seconds 2
 Check 'status.ps1 reports everything in order' {
     & powershell -NoProfile -ExecutionPolicy Bypass -File "$InstallDir\scripts\status.ps1"
     $LASTEXITCODE -eq 0

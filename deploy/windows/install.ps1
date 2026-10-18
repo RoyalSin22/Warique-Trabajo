@@ -21,10 +21,10 @@ param(
     [int]$MySqlPort = 3306,
     [ValidateRange(1024, 65535)]
     [int]$Port = 3000,
-    # After closing (the restaurant serves 11:00-18:00). If the PC is already off, the task runs
-    # as soon as it is turned on (StartWhenAvailable)
+    # After the cash count (the restaurant serves 11:00-18:00 and closes the drawer by 19:00 at
+    # the latest). If the PC is already off, the task runs as soon as it is turned on (StartWhenAvailable)
     [ValidatePattern('^\d{2}:\d{2}$')]
-    [string]$BackupTime = '18:30',
+    [string]$BackupTime = '19:30',
     # Segunda copia del respaldo: USB, disco externo o carpeta sincronizada (OneDrive/Google Drive)
     [string]$BackupCopyDir = '',
     # Usa la carpeta de Google Drive para escritorio (modo "duplicar archivos") como copia externa:
@@ -33,7 +33,7 @@ param(
     [ValidateRange(3, 365)]
     [int]$RetentionDays = 30,
     # Horas en las que Windows Update no reinicia la PC (maximo 18 horas). Atencion 11:00-18:00:
-    # se cubre desde la preparacion (08:00) hasta despues del cierre de caja (22:00)
+    # se cubre desde la preparacion (08:00) hasta despues del cierre de caja (19:00) y del respaldo (19:30)
     [ValidateRange(0, 23)]
     [int]$ActiveHoursStart = 8,
     [ValidateRange(0, 23)]
@@ -429,6 +429,9 @@ try {
     } else {
         Write-Ok "Respaldo de prueba correcto: $($lastBackup.file)$(if ($lastBackup.copied) { ", copiado a $BackupCopyDir" })"
         if ($GoogleDrive) {
+            if ($lastBackup.uploaderRunning -eq $false) {
+                Write-Warn 'Google Drive para escritorio NO esta abierto: el respaldo no se sube a la nube. Abrelo e inicia sesion.'
+            }
             Write-Warn 'Google Drive solo sube los archivos mientras la sesion de Windows del dueno esta iniciada.'
             Write-Host '    Revisa en drive.google.com que aparezca la carpeta RespaldosWarique.'
         }

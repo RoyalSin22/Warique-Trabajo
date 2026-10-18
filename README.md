@@ -87,6 +87,7 @@ are for a development machine.
 | POST | `/orders` | WAITER, OWNER (accepts `Idempotency-Key`) |
 | PATCH | `/orders/:id/status` | per transition (see `orders/order-status.ts`) |
 | POST | `/orders/:id/payments` | WAITER, OWNER (accepts `Idempotency-Key`) |
+| PATCH | `/orders/:id/payments/:paymentId/void` | OWNER (`{ "reason": "..." }`; the order's payment status is recomputed) |
 | GET | `/reports/daily?date=YYYY-MM-DD` | OWNER |
 | GET | `/reports/payments?date=YYYY-MM-DD` | OWNER (reconciliation list) |
 | GET | `/reports/summary?from=YYYY-MM-DD&to=YYYY-MM-DD` | OWNER (dashboard, up to 366 days) |
@@ -119,6 +120,7 @@ prefixed with `'` (CSV injection). The download link is signed with a key derive
 | Selling a dish does **not** deduct supplies (no recipes) | Counts and waste are registered by hand; recipes can come later |
 | A purchase (expense with `items`) is always `INSUMOS`, its amount is the sum of the lines, and its stock goes in within the same transaction (rows locked in id order: no deadlocks) | Expense and stock always agree |
 | Expenses are voided with a reason, never deleted; voiding a purchase takes its stock back out (refused if part of it was already used: count first) | Audit trail |
+| Payments are voided by the owner with a reason, never deleted; a voided payment is listed (crossed out) but counts in no balance, report, cash count or daily CSV | A wrong method or amount is fixed without losing the audit trail |
 | Expected cash = change fund + cash payments of the day − expenses paid `CASH` that day; closing snapshots expected, counted and the difference (negative = missing); closing again is a recount | The drawer is reconciled every day |
 | "Ventas − gastos" is a cash view, not accounting profit | A purchase counts fully on the day it is paid |
 
@@ -139,9 +141,9 @@ Requirements: Flutter 3.44+ (tested with 3.47.6 / Dart 3.13). Screens in this it
 
 | Role | Screens |
 |---|---|
-| WAITER | Today's orders (ready / to collect / in kitchen), new order (or "another order for this table" from an order's detail) (table or takeaway, sold-out dishes blocked live), order detail, deliver, cancel, payment (cash with change, Yape/Plin with operation number) |
-| KITCHEN | Live board (pending / in preparation, FIFO, late orders in red, alert on cancellations), sold-out switches, **Insumos** (stock with "por comprar" list, counts, waste, use, history; low-stock count badge on the tab) |
-| OWNER | Waiter and kitchen screens, plus **Cierre** (daily closing: sales, collections, expenses and sales − expenses, **cash count** with the difference shown as "Cuadra" / "Faltan" / "Sobran", collections per method, top dishes, every payment with its Yape/Plin operation number, backup health; **Estadísticas**: sales per day, weekday averages, top dishes by quantity or revenue, orders per hour, payment split and expenses by category for 7/30/90 days or this month, each chart with a table view) **Exportar para el contador** (CSV of daily sales, payments, expenses and cash counts for last month, this month or any range) and **Gestión** (**expenses** with optional supply lines, voiding with a reason; **supplies** with minimum stock alerts; menu with categories, prices and sold-out switches; tables; staff accounts and password resets; QR codes to connect staff phones) |
+| WAITER | Today's orders (ready / to collect / in kitchen; the phone of the waiter who took an order rings and vibrates when it is ready), new order (or "another order for this table" from an order's detail) (table or takeaway, sold-out dishes blocked live), order detail, deliver, cancel, payment (cash with change, Yape/Plin with operation number) |
+| KITCHEN | Live board (pending / in preparation, FIFO, late orders in red; a chime for every new order, repeated every 30 s until someone starts it, and a buzz on cancellations; the screen stays on while the board is open),  sold-out switches, **Insumos** (stock with "por comprar" list, counts, waste, use, history; low-stock count badge on the tab) |
+| OWNER | Waiter and kitchen screens, plus **Cierre** (daily closing: sales, collections, expenses and sales − expenses, **cash count** with the difference shown as "Cuadra" / "Faltan" / "Sobran", collections per method, top dishes, every payment with its Yape/Plin operation number (tap to open the order and void a wrong payment), backup health including whether Google Drive was running to upload it; **Estadísticas**: sales per day, weekday averages, top dishes by quantity or revenue, orders per hour, payment split and expenses by category for 7/30/90 days or this month, each chart with a table view) **Exportar para el contador** (CSV of daily sales, payments, expenses and cash counts for last month, this month or any range) and **Gestión** (**expenses** with optional supply lines, voiding with a reason; **supplies** with minimum stock alerts; menu with categories, prices and sold-out switches; tables; staff accounts and password resets; QR codes to connect staff phones) |
 | All | Change own password from the account menu |
 
 ```powershell

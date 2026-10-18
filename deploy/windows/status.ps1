@@ -55,6 +55,11 @@ if (Test-Path -LiteralPath $statusFile) {
     if ($last.ok) {
         Show ($age.TotalHours -lt 26) ("Ultimo respaldo: {0} (hace {1:N0} h), copia externa: {2}" -f $last.file, $age.TotalHours, $(if ($last.copied) { 'si' } else { 'NO' }))
         if ($config.backupCopyDir -and -not $last.copied) { Show $false "La copia externa no se hizo: revisa $($config.backupCopyDir)" }
+        if ($config.backupCopyDir -and (Test-GoogleDriveMirrorPath $config.backupCopyDir)) {
+            # The mirror folder is on this disk: only the running Drive app takes it to the cloud
+            if (Test-GoogleDriveRunning) { Show $true 'Google Drive para escritorio abierto: sube los respaldos a la nube' }
+            else { Show $false 'Google Drive para escritorio NO esta abierto: los respaldos no llegan a la nube. Inicia sesion en Windows con la cuenta del dueno.' }
+        }
     } else {
         Show $false "Ultimo respaldo FALLO hace $([int]$age.TotalHours) h: $($last.error)"
     }

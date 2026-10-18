@@ -16,7 +16,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { IdempotencyInterceptor } from '../common/idempotency/idempotency.interceptor';
 import { CreateOrderDto, ListOrdersQueryDto, UpdateOrderStatusDto } from './dto/order.dto';
-import { CreatePaymentDto } from './dto/payment.dto';
+import { CreatePaymentDto, VoidPaymentDto } from './dto/payment.dto';
 import { OrdersService } from './orders.service';
 import { PaymentsService } from './payments.service';
 
@@ -63,5 +63,17 @@ export class OrdersController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.paymentsService.register(id, dto, user);
+  }
+
+  /** A payment registered by mistake: only the owner can undo it, with a reason. */
+  @Roles(Role.OWNER)
+  @Patch(':id/payments/:paymentId/void')
+  voidPayment(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('paymentId', ParseIntPipe) paymentId: number,
+    @Body() dto: VoidPaymentDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.paymentsService.void(id, paymentId, dto.reason, user);
   }
 }

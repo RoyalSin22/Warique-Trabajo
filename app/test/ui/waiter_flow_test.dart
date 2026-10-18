@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:warique_app/core/alerts.dart';
 import 'package:warique_app/data/realtime_client.dart';
 import 'package:warique_app/models/user.dart';
 import 'package:warique_app/ui/waiter/order_detail_page.dart';
@@ -12,21 +13,25 @@ import '../support/fixtures.dart';
 void main() {
   late FakeRealtime realtime;
   late RecordingHttp http;
+  late FakeAlerts alerts;
 
-  Future<void> pump(WidgetTester tester, Widget home) async {
+  Future<void> pump(WidgetTester tester, Widget home, {Role role = Role.waiter}) async {
     tester.view.physicalSize = const Size(400, 800); // phone
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
       ProviderScope(
-        overrides: sessionOverrides(role: Role.waiter, http: http, realtime: realtime),
+        overrides: sessionOverrides(role: role, http: http, realtime: realtime, alerts: alerts),
         child: MaterialApp(home: home),
       ),
     );
     await tester.pumpAndSettle();
   }
 
-  setUp(() => realtime = FakeRealtime());
+  setUp(() {
+    realtime = FakeRealtime();
+    alerts = FakeAlerts();
+  });
 
   testWidgets('creates a dine-in order', (tester) async {
     http = RecordingHttp(
@@ -136,6 +141,68 @@ void main() {
     expect(find.textContaining('Cobrar'), findsNothing);
   });
 
+  group('voiding a payment', () {
+    Map<String, dynamic> cashPayment({String? voidedAt}) => {
+      'id': 30,
+      'method': 'CASH',
+      'amount': '40',
+      'amountReceived': '50',
+      'changeGiven': '10',
+      'operationNumber': null,
+      'createdAt': '2026-10-03T15:30:00.000Z',
+      'voidedAt': voidedAt,
+      'voidReason': voidedAt == null ? null : 'era Yape',
+    };
+
+    void serve() => http = RecordingHttp(
+      (request) => switch ((request.method, request.url.path)) {
+        ('GET', '/api/orders') => (200, <Object>[]),
+        ('GET', '/api/orders/4') => (
+          200,
+          orderJson(id: 4, status: 'DELIVERED', paymentStatus: 'PAID', payments: [cashPayment()]),
+        ),
+        ('PATCH', '/api/orders/4/payments/30/void') => (
+          200,
+          orderJson(
+            id: 4,
+            status: 'DELIVERED',
+            updatedAt: '2026-10-03T15:40:00.000Z',
+            payments: [cashPayment(voidedAt: '2026-10-03T15:40:00.000Z')],
+          ),
+        ),
+        _ => (404, {'message': 'Not found'}),
+      },
+    );
+
+    testWidgets('only the owner sees the button', (tester) async {
+      serve();
+      await pump(tester, const OrderDetailPage(orderId: 4));
+      expect(find.byTooltip('Anular cobro'), findsNothing);
+    });
+
+    testWidgets('the owner voids it with a reason and the balance comes back', (tester) async {
+      serve();
+      await pump(tester, const OrderDetailPage(orderId: 4), role: Role.owner);
+
+      await tester.tap(find.byTooltip('Anular cobro'));
+      await tester.pumpAndSettle();
+      final confirm = find.widgetWithText(FilledButton, 'Anular cobro');
+      expect(tester.widget<FilledButton>(confirm).onPressed, isNull, reason: 'reason required');
+
+      await tester.enterText(find.byType(TextField), 'era Yape');
+      await tester.pump();
+      await tester.tap(confirm);
+      await tester.pumpAndSettle();
+
+      final patch = http.requests.indexWhere((r) => r.method == 'PATCH');
+      expect(http.bodyOf(patch), {'reason': 'era Yape'});
+      expect(find.text('Cobro anulado. Saldo: S/ 40.00'), findsOneWidget);
+      expect(find.textContaining('ANULADO: era Yape'), findsOneWidget);
+      expect(find.text('Cobrar S/ 40.00'), findsOneWidget);
+      expect(find.byTooltip('Anular cobro'), findsNothing, reason: 'already void');
+    });
+  });
+
   testWidgets('Yape requires a valid operation number', (tester) async {
     http = RecordingHttp(
       (request) => switch ((request.method, request.url.path)) {
@@ -171,5 +238,19 @@ void main() {
 
     expect(find.text('¡Listo para entregar! #1 · Mesa 3'), findsOneWidget);
     expect(find.text('Listos para entregar (1)'), findsOneWidget);
+    expect(alerts.played, isEmpty, reason: "another waiter's order: message only, no sound");
+  });
+
+  testWidgets("rings and vibrates the phone of the waiter who took the order", (tester) async {
+    http = RecordingHttp((request) => (200, [orderJson(id: 1, status: 'IN_PREPARATION', waiterId: 1)]));
+    await pump(tester, const WaiterOrdersPage());
+
+    realtime.emit(
+      RealtimeEvent.orderUpdated,
+      orderJson(id: 1, status: 'READY', updatedAt: '2026-10-03T15:20:00.000Z', waiterId: 1),
+    );
+    await tester.pumpAndSettle();
+
+    expect(alerts.played, [(tone: AlertTone.ready, vibrate: true)]);
   });
 }

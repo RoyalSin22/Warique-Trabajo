@@ -35,7 +35,10 @@ const _knownMessages = <String, String>{
   'Some dishes are not available': 'Algunos platos ya no están disponibles. Se quitaron del pedido.',
   'The order was modified by someone else. Reload and try again':
       'Otra persona modificó este pedido. Se actualizó la información; revisa e intenta de nuevo.',
-  'Cannot cancel an order that already has payments': 'No se puede cancelar un pedido que ya tiene pagos.',
+  'Cannot cancel an order that already has payments':
+      'No se puede cancelar un pedido que ya tiene pagos. El dueño puede anular los cobros primero.',
+  'The payment is already void': 'El cobro ya estaba anulado.',
+  'Payment not found': 'El cobro no existe.',
   'cancelReason is required to cancel an order': 'Indica el motivo de la cancelación.',
   'The order is already paid': 'El pedido ya está pagado.',
   'Cannot register a payment for a cancelled order': 'El pedido está cancelado.',

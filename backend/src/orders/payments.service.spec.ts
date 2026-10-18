@@ -10,7 +10,7 @@ describe('PaymentsService', () => {
   const tx = {
     $queryRaw: jest.fn(),
     order: { findUniqueOrThrow: jest.fn(), update: jest.fn() },
-    payment: { aggregate: jest.fn(), create: jest.fn() },
+    payment: { aggregate: jest.fn(), create: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
   };
   const prisma = { $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)) };
   const ordersService = { findOne: jest.fn().mockResolvedValue({ id: 1 }) };
@@ -115,5 +115,56 @@ describe('PaymentsService', () => {
     await expect(
       service.register(1, { method: PaymentMethod.YAPE, amount: 10 }, waiter),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  describe('void', () => {
+    const owner = { id: 1, username: 'dueno', fullName: 'Dueño', role: Role.OWNER };
+
+    const givenPayment = (voidedAt: Date | null, remaining: string | null, total = '40.00') => {
+      tx.$queryRaw.mockResolvedValue([{ id: 1 }]);
+      tx.payment.findFirst.mockResolvedValue({ voidedAt });
+      tx.order.findUniqueOrThrow.mockResolvedValue({ total });
+      tx.payment.aggregate.mockResolvedValue({ _sum: { amount: remaining } });
+    };
+
+    it('keeps the row with who/why and reopens a fully paid order', async () => {
+      givenPayment(null, null);
+      await service.void(1, 5, 'era Yape', owner);
+
+      expect(tx.payment.update).toHaveBeenCalledWith({
+        where: { id: 5 },
+        data: { voidedAt: expect.any(Date), voidedBy: 1, voidReason: 'era Yape' },
+      });
+      expect(tx.payment.aggregate).toHaveBeenCalledWith({
+        where: { orderId: 1, voidedAt: null },
+        _sum: { amount: true },
+      });
+      expect(tx.order.update).toHaveBeenCalledWith({
+        where: { id: 1 },
+        data: { paymentStatus: PaymentStatus.UNPAID, paidAt: null },
+      });
+      expect(realtime.orderUpdated).toHaveBeenCalled();
+    });
+
+    it('leaves the order PARTIAL when other payments remain', async () => {
+      givenPayment(null, '25.00');
+      await service.void(1, 5, 'monto equivocado', owner);
+      expect(tx.order.update).toHaveBeenCalledWith({
+        where: { id: 1 },
+        data: { paymentStatus: PaymentStatus.PARTIAL, paidAt: null },
+      });
+    });
+
+    it('rejects a payment that is already void', async () => {
+      givenPayment(new Date(), null);
+      await expect(service.void(1, 5, 'otra vez', owner)).rejects.toThrow(ConflictException);
+      expect(tx.payment.update).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 for a payment of another order', async () => {
+      givenPayment(null, null);
+      tx.payment.findFirst.mockResolvedValue(null);
+      await expect(service.void(1, 77, 'x', owner)).rejects.toThrow(NotFoundException);
+    });
   });
 });
