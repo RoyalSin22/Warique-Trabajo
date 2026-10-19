@@ -184,7 +184,8 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
   Widget build(BuildContext context) {
     final live = ref.watch(orderByIdProvider(widget.orderId));
     final order = _pickNewest(live, _loaded);
-    final role = ref.watch(currentUserProvider).role;
+    final user = ref.watch(currentUserProvider);
+    final role = user.role;
 
     if (order == null) {
       return Scaffold(
@@ -358,7 +359,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
             runSpacing: 8,
             alignment: WrapAlignment.end,
             children: [
-              if (order.canCancel(role))
+              if (order.canCancel(role, userId: user.id))
                 OutlinedButton.icon(
                   onPressed: _busy ? null : () => _cancel(order),
                   icon: const Icon(Icons.cancel_outlined),

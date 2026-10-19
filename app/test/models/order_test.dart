@@ -89,8 +89,10 @@ void main() {
       expect(ready.canTransition(OrderStatus.delivered, Role.kitchen), isFalse);
     });
 
-    test('waiter cancels only pending and unpaid orders', () {
-      expect(Order.fromJson(orderJson()).canCancel(Role.waiter), isTrue);
+    test('waiter cancels only their own pending and unpaid orders', () {
+      expect(Order.fromJson(orderJson()).canCancel(Role.waiter, userId: 2), isTrue); // fixture waiter id 2
+      expect(Order.fromJson(orderJson()).canCancel(Role.waiter, userId: 9), isFalse, reason: "a colleague's");
+      expect(Order.fromJson(orderJson()).canCancel(Role.owner, userId: 1), isTrue);
       expect(Order.fromJson(orderJson(status: 'IN_PREPARATION')).canCancel(Role.waiter), isFalse);
       expect(Order.fromJson(orderJson(status: 'IN_PREPARATION')).canCancel(Role.owner), isTrue);
       expect(Order.fromJson(orderJson(paymentStatus: 'PARTIAL')).canCancel(Role.owner), isFalse);

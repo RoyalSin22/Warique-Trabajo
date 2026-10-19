@@ -87,8 +87,17 @@ Set-EnvFileValue (Join-Path $InstallDir 'config\.env') 'BACKUP_STATUS_FILE' (Joi
 
 Write-Step 'Reemplazando la aplicacion'
 Stop-Service -Name $config.serviceName
-if (Test-Path -LiteralPath $previousDir) { Remove-Item -LiteralPath $previousDir -Recurse -Force }
-Rename-Item -LiteralPath $appDir -NewName 'app.previous'
+try {
+    if (Test-Path -LiteralPath $previousDir) { Remove-Item -LiteralPath $previousDir -Recurse -Force }
+    Rename-Item -LiteralPath $appDir -NewName 'app.previous'
+} catch {
+    # A file locked by the antivirus or an open Explorer window: the restaurant keeps the current version
+    if (-not (Test-Path -LiteralPath $appDir) -and (Test-Path -LiteralPath $previousDir)) {
+        Rename-Item -LiteralPath $previousDir -NewName 'app'
+    }
+    Start-Service -Name $config.serviceName
+    throw "No se pudo apartar la version actual (algun archivo en uso: cierra el Explorador y reintenta): $($_.Exception.Message)"
+}
 try {
     Copy-Tree (Join-Path $ReleaseDir 'app') $appDir
 } catch {

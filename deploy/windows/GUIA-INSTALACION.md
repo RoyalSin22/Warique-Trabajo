@@ -174,7 +174,11 @@ Parámetros útiles: `-ActiveHoursStart 8 -ActiveHoursEnd 22 -BackupTime '19:30'
   baja y la cocina recibe un aviso «NO preparar». No se puede quitar el único plato (en ese caso se
   cancela el pedido) ni dejar el total por debajo de lo ya cobrado (primero se anula el cobro).
 - **Si se corta el Wi-Fi al enviar:** vuelve a tocar *Enviar a cocina* sin cambiar nada; el sistema
-  reconoce el reintento y **no duplica** el pedido ni el pago.
+  reconoce el reintento y **no duplica** el pedido ni el pago (aunque la PC se haya reiniciado en el
+  medio).
+- **Si la app se cierra a mitad de un pedido** (se venció la sesión, se cerró la pestaña): al volver a
+  *Nuevo pedido* aparece *Se recuperó el pedido que estabas armando*, con los mismos platos.
+- **Cancelar un pedido pendiente:** lo puede hacer el mozo que lo tomó o el dueño (no otro mozo).
 - **Al cerrar:** en la pestaña *Cierre* revisa ventas, cobrado y por cobrar. En *Pagos del día* filtra
   por Yape o Plin y compara cada N.° de operación con tu app del banco (el botón copia el número).
 - **Caja (arqueo):** al abrir, en *Cierre* toca *Abrir caja* e ingresa el fondo de cambio. Al cerrar,

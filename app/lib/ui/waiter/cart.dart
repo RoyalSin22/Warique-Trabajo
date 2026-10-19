@@ -63,6 +63,23 @@ class Cart {
       if (!(menu[id]?.isAvailable ?? false)) id,
   ];
 
+  /// Saved on the device while the order is being built (see NewOrderPage's draft).
+  Map<String, Object?> toJson() => {
+    'lines': [
+      for (final entry in _quantities.entries)
+        {'dishId': entry.key, 'quantity': entry.value, 'note': _notes[entry.key]},
+    ],
+  };
+
+  void restore(Map<String, Object?> json) {
+    for (final line in (json['lines'] as List? ?? const [])) {
+      final map = line as Map<String, Object?>;
+      final dishId = map['dishId'] as int;
+      _quantities[dishId] = (map['quantity'] as int).clamp(1, maxQuantity);
+      setNote(dishId, map['note'] as String?);
+    }
+  }
+
   List<NewOrderItem> toItems() => [
     for (final entry in _quantities.entries)
       NewOrderItem(dishId: entry.key, quantity: entry.value, notes: _notes[entry.key]),

@@ -39,6 +39,8 @@ export class CreateOrderDto {
   @IsEnum(OrderType)
   orderType!: OrderType;
 
+  /** null is treated as "no table" (some clients send it for takeaway). */
+  @Transform(({ value }: { value: unknown }) => value ?? undefined)
   @IsOptional()
   @IsInt()
   @Min(1)

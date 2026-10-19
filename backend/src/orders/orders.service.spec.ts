@@ -10,7 +10,7 @@ describe('OrdersService', () => {
   const prisma = {
     diningTable: { findUnique: jest.fn() },
     dish: { findMany: jest.fn() },
-    order: { create: jest.fn(), findUnique: jest.fn(), updateMany: jest.fn() },
+    order: { create: jest.fn(), findUnique: jest.fn(), updateMany: jest.fn(), findMany: jest.fn() },
     $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
   };
   const tx = {
@@ -129,18 +129,42 @@ describe('OrdersService', () => {
     });
 
     it('requires a reason to cancel', async () => {
-      prisma.order.findUnique.mockResolvedValue({ status: OrderStatus.PENDING, paymentStatus: PaymentStatus.UNPAID });
+      prisma.order.findUnique.mockResolvedValue({ status: OrderStatus.PENDING, paymentStatus: PaymentStatus.UNPAID, waiterId: 7 });
       await expect(
         service.updateStatus(1, { status: OrderStatus.CANCELLED }, waiter),
       ).rejects.toThrow(BadRequestException);
     });
 
+    it("a waiter cannot cancel a colleague's order", async () => {
+      prisma.order.findUnique.mockResolvedValue({ status: OrderStatus.PENDING, paymentStatus: PaymentStatus.UNPAID, waiterId: 99 });
+      await expect(
+        service.updateStatus(1, { status: OrderStatus.CANCELLED, cancelReason: 'se fue' }, waiter),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.order.updateMany).not.toHaveBeenCalled();
+    });
+
     it('refuses to cancel an order with payments', async () => {
-      prisma.order.findUnique.mockResolvedValue({ status: OrderStatus.PENDING, paymentStatus: PaymentStatus.PARTIAL });
+      prisma.order.findUnique.mockResolvedValue({ status: OrderStatus.PENDING, paymentStatus: PaymentStatus.PARTIAL, waiterId: 7 });
       await expect(
         service.updateStatus(1, { status: OrderStatus.CANCELLED, cancelReason: 'cliente se fue' }, waiter),
       ).rejects.toThrow(ConflictException);
       expect(prisma.order.updateMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findAll', () => {
+    it('today also brings orders left open or unpaid from the previous two days', async () => {
+      prisma.order.findMany.mockResolvedValue([]);
+      await service.findAll({});
+      const { where } = prisma.order.findMany.mock.calls[0][0];
+      expect(where.OR).toHaveLength(2);
+      expect(where.OR[1].OR).toEqual([
+        { status: { in: [OrderStatus.PENDING, OrderStatus.IN_PREPARATION, OrderStatus.READY] } },
+        { status: OrderStatus.DELIVERED, paymentStatus: { not: PaymentStatus.PAID } },
+      ]);
+
+      await service.findAll({ date: '2026-10-02' });
+      expect(prisma.order.findMany.mock.calls[1][0].where.OR).toBeUndefined(); // a past day: that day only
     });
   });
 

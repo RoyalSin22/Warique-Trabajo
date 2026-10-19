@@ -53,6 +53,8 @@ const _knownMessages = <String, String>{
   'The order would be below what was already paid: void a payment first':
       'El total quedaría por debajo de lo ya cobrado: el dueño debe anular un cobro primero.',
   'price must be greater than 0': 'El precio debe ser mayor que 0.',
+  'Only the waiter who took the order or the owner can cancel it':
+      'Solo el mozo que tomó el pedido o el dueño pueden cancelarlo.',
   'Session expired': 'Tu sesión ya no es válida (cambiaron tu contraseña). Vuelve a ingresar.',
   'Payment not found': 'El cobro no existe.',
   'cancelReason is required to cancel an order': 'Indica el motivo de la cancelación.',

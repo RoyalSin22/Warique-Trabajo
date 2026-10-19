@@ -88,11 +88,24 @@ export class OrdersService {
     this.utcOffsetMinutes = Number(config.get('BUSINESS_UTC_OFFSET_MINUTES') ?? -300);
   }
 
+  /**
+   * Orders of a business day. Without a date ("today"), orders from the previous two days that are
+   * still open or unpaid are included too: an order left over from yesterday must not vanish from
+   * the kitchen and the waiters when the day changes.
+   */
   findAll(query: ListOrdersQueryDto) {
     const { start, end } = businessDayRange(query.date, this.utcOffsetMinutes);
+    const sameDay: Prisma.OrderWhereInput = { createdAt: { gte: start, lt: end } };
+    const leftOver: Prisma.OrderWhereInput = {
+      createdAt: { gte: new Date(start.getTime() - 2 * 24 * 60 * 60 * 1000), lt: start },
+      OR: [
+        { status: { in: [OrderStatus.PENDING, OrderStatus.IN_PREPARATION, OrderStatus.READY] } },
+        { status: OrderStatus.DELIVERED, paymentStatus: { not: PaymentStatus.PAID } },
+      ],
+    };
     return this.prisma.order.findMany({
       where: {
-        createdAt: { gte: start, lt: end },
+        ...(query.date ? sameDay : { OR: [sameDay, leftOver] }),
         ...(query.status?.length ? { status: { in: query.status } } : {}),
         ...(query.paymentStatus ? { paymentStatus: query.paymentStatus } : {}),
       },
@@ -194,13 +207,17 @@ export class OrdersService {
   async updateStatus(id: number, dto: UpdateOrderStatusDto, actor: AuthenticatedUser) {
     const order = await this.prisma.order.findUnique({
       where: { id },
-      select: { status: true, paymentStatus: true },
+      select: { status: true, paymentStatus: true, waiterId: true },
     });
     if (!order) throw new NotFoundException('Order not found');
 
     assertTransitionAllowed(order.status, dto.status, actor.role);
 
     const isCancel = dto.status === OrderStatus.CANCELLED;
+    // Another waiter's order is theirs to cancel (or the owner's), never a colleague's by mistake
+    if (isCancel && actor.role === Role.WAITER && order.waiterId !== actor.id) {
+      throw new ForbiddenException('Only the waiter who took the order or the owner can cancel it');
+    }
     if (isCancel && !dto.cancelReason) {
       throw new BadRequestException('cancelReason is required to cancel an order');
     }

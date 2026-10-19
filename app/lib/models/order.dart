@@ -278,8 +278,11 @@ class Order {
   bool canTransition(OrderStatus to, Role role) => orderTransitions[status]?[to]?.contains(role) ?? false;
 
   /// With payments the owner voids them first (a voided payment is how money goes back).
-  bool canCancel(Role role) =>
-      canTransition(OrderStatus.cancelled, role) && paymentStatus == PaymentStatus.unpaid;
+  bool canCancel(Role role, {int? userId}) =>
+      canTransition(OrderStatus.cancelled, role) &&
+      paymentStatus == PaymentStatus.unpaid &&
+      // A waiter cancels only the orders they took; the owner, any
+      (role != Role.waiter || waiterId == null || waiterId == userId);
 
   /// Keeps already-loaded payments when an update without them (list refresh) arrives.
   Order mergeWith(Order newer) {

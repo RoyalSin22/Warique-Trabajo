@@ -47,13 +47,60 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
   /// may hide a success), discarded as soon as the waiter changes anything.
   String? _requestId;
 
-  void _contentChanged() => _requestId = null;
+  void _contentChanged() {
+    _requestId = null;
+    _saveDraft();
+  }
 
   /// setState for changes to the order itself.
   void _change(VoidCallback fn) => setState(() {
     fn();
     _contentChanged();
   });
+
+  /// Only a brand-new order is kept as a draft (adding to an order is a quick, short action).
+  bool get _keepsDraft => widget.addTo == null;
+
+  int get _userId => ref.read(currentUserProvider).id;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!_keepsDraft || widget.initialTableId != null) return;
+    final draft = ref.read(settingsStoreProvider).orderDraft(_userId);
+    if (draft == null) return;
+    _cart.restore(draft);
+    if (_cart.isEmpty) return;
+    _type = draft['type'] == OrderType.takeaway.api ? OrderType.takeaway : OrderType.dineIn;
+    _tableId = draft['tableId'] as int?;
+    _customerController.text = draft['customerName'] as String? ?? '';
+    _notesController.text = draft['notes'] as String? ?? '';
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) showInfoSnack(context, 'Se recuperó el pedido que estabas armando.');
+    });
+  }
+
+  void _saveDraft() {
+    if (!_keepsDraft) return;
+    ref
+        .read(settingsStoreProvider)
+        .setOrderDraft(
+          _userId,
+          _cart.isEmpty
+              ? null
+              : {
+                  ..._cart.toJson(),
+                  'type': _type.api,
+                  'tableId': _tableId,
+                  'customerName': _customerController.text,
+                  'notes': _notesController.text,
+                },
+        );
+  }
+
+  void _clearDraft() {
+    if (_keepsDraft) ref.read(settingsStoreProvider).setOrderDraft(_userId, null);
+  }
 
   @override
   void dispose() {
@@ -124,6 +171,7 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
               items: _cart.toItems(),
               requestId: _requestId,
             );
+      _clearDraft();
       if (mounted) Navigator.of(context).pop(order);
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -193,7 +241,10 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
             ],
           ),
         );
-        if (discard == true && context.mounted) Navigator.of(context).pop();
+        if (discard == true && context.mounted) {
+          _clearDraft();
+          Navigator.of(context).pop();
+        }
       },
       child: Scaffold(
         appBar: AppBar(

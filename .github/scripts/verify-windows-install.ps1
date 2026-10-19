@@ -229,6 +229,17 @@ Check 'service restarts by itself after the Node process dies' {
 Check 'service survives a full stop/start (as after a reboot)' {
     Stop-Service warique; Start-Service warique; Wait-Healthy | Out-Null; $true
 }
+Check 'a retried order is not duplicated even across a restart (migration 004)' {
+    $rosa = Api POST '/auth/login' @{ username = 'rosa'; password = 'Rosa-pass-123' }
+    $headers = @{ Authorization = "Bearer $($rosa.accessToken)"; 'Idempotency-Key' = 'ci-restart-0001' }
+    $dish = (Api GET '/dishes' $null $auth)[0]
+    $order = @{ orderType = 'TAKEAWAY'; customerName = 'Reintento'; items = @(@{ dishId = $dish.id; quantity = 1 }) }
+    $first = Api POST '/orders' $order $headers
+    Restart-Service warique; Wait-Healthy | Out-Null   # the in-memory copy of the key is gone
+    $retry = Api POST '/orders' $order $headers
+    Write-Host "      first $($first.id), retry after restart $($retry.id)"
+    $first.id -eq $retry.id
+}
 
 # ------------------------------------------------------------------ Backup / restore
 Check 'restore.ps1 brings back the data of a backup' {

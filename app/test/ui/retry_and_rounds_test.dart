@@ -46,6 +46,7 @@ void main() {
       ProviderScope(
         overrides: [
           currentSessionProvider.overrideWithValue(testSession(Role.waiter)),
+          testPreferencesOverride(),
           apiClientProvider.overrideWithValue(
             ApiClient(baseUrl: testServer, token: 'token', httpClient: MockClient(handler)),
           ),
@@ -196,6 +197,36 @@ void main() {
     await tester.tap(find.text('Descartar'));
     await tester.pumpAndSettle();
     expect(find.text('abrir'), findsOneWidget);
+  });
+
+  testWidgets('an order being built survives the screen closing (expired session, closed tab)', (
+    tester,
+  ) async {
+    await pumpWith(tester, const NewOrderPage(), menuAndTables);
+    await tester.tap(find.text('Ceviche'));
+    await tester.tap(find.text('Ceviche'));
+    await tester.pump();
+
+    // The session ended and the waiter signs in again: a fresh screen, same device storage
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentSessionProvider.overrideWithValue(testSession(Role.waiter)),
+          sharedPreferencesProvider.overrideWithValue(testPrefs),
+          apiClientProvider.overrideWithValue(
+            ApiClient(baseUrl: testServer, token: 'token', httpClient: MockClient(menuAndTables)),
+          ),
+          realtimeClientProvider.overrideWithValue(FakeRealtime()),
+          realtimeConnectedProvider.overrideWith((ref) => Stream.value(true)),
+        ],
+        child: const MaterialApp(home: NewOrderPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Se recuperó el pedido que estabas armando.'), findsOneWidget);
+    expect(find.textContaining('2 platos'), findsWidgets);
   });
 
   testWidgets('connect devices shows the server address as a QR code', (tester) async {
