@@ -20,6 +20,24 @@ class WaiterOrdersPage extends ConsumerStatefulWidget {
 class _WaiterOrdersPageState extends ConsumerState<WaiterOrdersPage> {
   bool _onlyPending = true;
 
+  /// Web: the browser keeps sound off until the page is touched; without this the first "Listo"
+  /// would be silent (iPhone above all).
+  late bool _soundLocked = ref.read(alertsProvider).needsUserGesture;
+
+  /// Must run inside the tap: that is what lets the browser play sound later.
+  void _unlockSound() {
+    ref.read(alertsProvider).play(AlertTone.ready);
+    setState(() => _soundLocked = false);
+  }
+
+  /// Any tap on the page unlocks it too (a listener in device_web.dart); re-check right after.
+  void _recheckSound() {
+    if (!_soundLocked) return;
+    Future<void>.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) setState(() => _soundLocked = ref.read(alertsProvider).needsUserGesture);
+    });
+  }
+
   Future<void> _refresh() async {
     try {
       await ref.read(ordersProvider.notifier).refresh();
@@ -54,9 +72,11 @@ class _WaiterOrdersPageState extends ConsumerState<WaiterOrdersPage> {
       if (ready.any((order) => order.waiterId == myId)) {
         ref.read(alertsProvider).play(AlertTone.ready, vibrate: true);
       }
-      for (final order in ready) {
-        showInfoSnack(context, '¡Listo para entregar! #${order.id} · ${order.target}');
-      }
+      // One snack: several at once (e.g. after reconnecting) would hide each other
+      showInfoSnack(
+        context,
+        ready.map((order) => '¡Listo para entregar! #${order.id} · ${order.target}').join('\n'),
+      );
     });
 
     final orders = ref.watch(ordersProvider);
@@ -89,19 +109,42 @@ class _WaiterOrdersPageState extends ConsumerState<WaiterOrdersPage> {
         icon: const Icon(Icons.add),
         label: const Text('Nuevo pedido'),
       ),
-      body: switch (orders) {
-        AsyncValue(value: final list?) => RefreshIndicator(
-          onRefresh: _refresh,
-          child: _onlyPending
-              ? _PendingSections(orders: list, onTap: _openDetail)
-              : _OrderList(orders: list.reversed.toList(), onTap: _openDetail),
+      body: Listener(
+        onPointerUp: (_) => _recheckSound(),
+        child: Column(
+          children: [
+            if (_soundLocked)
+              MaterialBanner(
+                leading: const Icon(Icons.volume_off),
+                content: const Text(
+                  'Toca "Activar" para que suene cuando la cocina marque tus pedidos listos.',
+                ),
+                actions: [
+                  FilledButton.icon(
+                    onPressed: _unlockSound,
+                    icon: const Icon(Icons.volume_up),
+                    label: const Text('Activar'),
+                  ),
+                ],
+              ),
+            Expanded(
+              child: switch (orders) {
+                AsyncValue(value: final list?) => RefreshIndicator(
+                  onRefresh: _refresh,
+                  child: _onlyPending
+                      ? _PendingSections(orders: list, onTap: _openDetail)
+                      : _OrderList(orders: list.reversed.toList(), onTap: _openDetail),
+                ),
+                AsyncError(:final error) => ErrorRetryView(
+                  error: error,
+                  onRetry: () => ref.invalidate(ordersProvider),
+                ),
+                _ => const Center(child: CircularProgressIndicator()),
+              },
+            ),
+          ],
         ),
-        AsyncError(:final error) => ErrorRetryView(
-          error: error,
-          onRetry: () => ref.invalidate(ordersProvider),
-        ),
-        _ => const Center(child: CircularProgressIndicator()),
-      },
+      ),
     );
   }
 }

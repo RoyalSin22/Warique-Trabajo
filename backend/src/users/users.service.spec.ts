@@ -50,4 +50,13 @@ describe('UsersService', () => {
     await service.update(2, { fullName: 'Ana María' }, owner);
     expect(realtime.disconnectUser).not.toHaveBeenCalled();
   });
+
+  it('resetting a password ends that user\'s sessions; the owner cannot reset their own here', async () => {
+    prisma.user.update.mockResolvedValue({ id: 5 });
+    await service.resetPassword(5, 'Nueva-clave-1', owner);
+    expect(prisma.user.update.mock.calls.at(-1)[0].data.tokenVersion).toEqual({ increment: 1 });
+    expect(realtime.disconnectUser).toHaveBeenCalledWith(5);
+
+    await expect(service.resetPassword(owner.id, 'Nueva-clave-1', owner)).rejects.toThrow('own password change');
+  });
 });

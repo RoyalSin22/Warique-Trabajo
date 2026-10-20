@@ -177,8 +177,13 @@ Parámetros útiles: `-ActiveHoursStart 8 -ActiveHoursEnd 22 -BackupTime '19:30'
   reconoce el reintento y **no duplica** el pedido ni el pago (aunque la PC se haya reiniciado en el
   medio).
 - **Si la app se cierra a mitad de un pedido** (se venció la sesión, se cerró la pestaña): al volver a
-  *Nuevo pedido* aparece *Se recuperó el pedido que estabas armando*, con los mismos platos.
-- **Cancelar un pedido pendiente:** lo puede hacer el mozo que lo tomó o el dueño (no otro mozo).
+  *Nuevo pedido* aparece *Se recuperó el pedido que estabas armando*, con los mismos platos (solo si
+  se empezó desde *Nuevo pedido* y hace menos de 12 horas; los platos que ya no están en la carta se
+  quitan solos). Mientras se está enviando, la app no deja salir de la pantalla.
+- **Pagos con Yape o Plin:** el mismo número de operación no se puede registrar dos veces (evita que
+  una misma captura se use para pagar dos pedidos).
+- **Cancelar un pedido pendiente o quitarle platos:** lo puede hacer el mozo que lo tomó o el dueño
+  (no otro mozo). Un pedido de un día con la caja ya cerrada no se puede modificar.
 - **Al cerrar:** en la pestaña *Cierre* revisa ventas, cobrado y por cobrar. En *Pagos del día* filtra
   por Yape o Plin y compara cada N.° de operación con tu app del banco (el botón copia el número).
 - **Caja (arqueo):** al abrir, en *Cierre* toca *Abrir caja* e ingresa el fondo de cambio. Al cerrar,
@@ -217,12 +222,19 @@ Parámetros útiles: `-ActiveHoursStart 8 -ActiveHoursEnd 22 -BackupTime '19:30'
   copió a la carpeta de Drive y Google Drive estaba abierto para subirlo; si sale **roja**, avisa a
   soporte ese mismo día. **Una vez por semana** entra a <https://drive.google.com> → *RespaldosWarique*
   y mira que el archivo más reciente sea de anoche: es la única prueba de que de verdad está en la nube.
-- **Sonidos:** la cocina escucha un timbre con cada pedido nuevo, que se **repite cada 30 segundos**
-  hasta que alguien toque *Empezar*, y un zumbido si se cancela un pedido que tenía en cola. El mozo
-  que tomó el pedido escucha otro timbre (y el celular vibra) cuando la cocina lo marca *Listo*.
-  En el navegador, la primera vez que se abre la pantalla de cocina aparece *Activar*: tócalo una vez
-  (los navegadores no dejan sonar una página que nadie tocó). Mientras la pantalla de cocina esté
-  abierta, la tablet **no se apaga sola**; déjala enchufada.
+- **Sonidos:** la cocina escucha un timbre con cada pedido nuevo o plato agregado, que se **repite cada
+  30 segundos** hasta que alguien toque *Empezar*, y un zumbido si se cancela un pedido o se quita un
+  plato (todos los avisos «NO preparar» se juntan en una sola ventana). El mozo que tomó el pedido
+  escucha otro timbre cuando la cocina lo marca *Listo* (en Android además vibra; el iPhone no vibra
+  desde el navegador).
+  - En el navegador aparece *Activar* **cada vez que se abre o recarga la página** (los navegadores no
+    dejan sonar una página que nadie tocó): tócalo una vez, en cocina y en cada celular de mozo.
+  - El celular del mozo solo suena con la app **abierta y la pantalla encendida**: en el bolsillo o
+    con otra app delante no suena. La lista *Listos para entregar* es lo que vale; revísala.
+  - Mientras la pantalla de cocina esté abierta, la tablet **no se apaga sola**; déjala enchufada.
+    En el celular del dueño solo suena (y queda encendida) mientras mira la pestaña *Cocina*.
+  - Si se agregó un plato justo cuando el cocinero tocaba *Listo*, la app no deja marcarlo listo y
+    muestra el pedido actualizado: así el plato agregado no sale sin preparar.
 - **Personal:** en *Gestión → Usuarios* creas las cuentas de mozos y cocina, restableces claves y
   desactivas a quien ya no trabaja (su sesión se cierra al instante). **Si alguien pierde el
   celular**, restablécele la clave: todas sus sesiones abiertas se cierran en ese momento. Lo mismo

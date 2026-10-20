@@ -113,18 +113,26 @@ class OrdersRepository {
   }
 
   /// Removes a line, or [quantity] units of it, with a reason.
-  Future<Order> cancelItem(int id, int itemId, String reason, {int? quantity}) async {
+  Future<Order> cancelItem(int id, int itemId, String reason, {int? quantity, String? requestId}) async {
     final json = await _api.patch('/orders/$id/items/$itemId/cancel', {
       'reason': reason.trim(),
       'quantity': ?quantity,
-    });
+    }, _idempotency(requestId));
     return Order.fromJson(json as Json);
   }
 
-  Future<Order> changeStatus(int id, OrderStatus status, {String? cancelReason}) async {
+  /// [expectedUpdatedAt]: the copy the screen shows; the server refuses the change if the order
+  /// changed since (e.g. dishes were added while the cook was tapping "Listo").
+  Future<Order> changeStatus(
+    int id,
+    OrderStatus status, {
+    String? cancelReason,
+    DateTime? expectedUpdatedAt,
+  }) async {
     final json = await _api.patch('/orders/$id/status', {
       'status': status.api,
       if (cancelReason != null) 'cancelReason': cancelReason.trim(),
+      if (expectedUpdatedAt != null) 'expectedUpdatedAt': expectedUpdatedAt.toUtc().toIso8601String(),
     });
     return Order.fromJson(json as Json);
   }

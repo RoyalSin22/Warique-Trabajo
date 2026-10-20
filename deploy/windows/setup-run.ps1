@@ -25,6 +25,12 @@ param(
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'common.ps1')
 
+# The package folder (C:\ProgramData\WariqueInstalador) inherits "Users can create files" from
+# ProgramData. Close it before running anything from it as administrator: update.ps1 applies every
+# .sql in database\migrations with the MySQL root account.
+$packageDir = Split-Path $PSScriptRoot -Parent
+& icacls.exe $packageDir /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' /T /Q | Out-Null
+
 $logFile = [IO.Path]::ChangeExtension($ResultFile, '.log')
 Remove-Item -LiteralPath $ResultFile -Force -ErrorAction SilentlyContinue
 Start-Transcript -LiteralPath $logFile -Force | Out-Null

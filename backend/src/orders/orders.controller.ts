@@ -64,6 +64,7 @@ export class OrdersController {
 
   /** PENDING: waiter or owner. Once the kitchen started: owner only (checked in the service). */
   @Roles(Role.WAITER, Role.OWNER)
+  @UseInterceptors(IdempotencyInterceptor) // a retried "quitar 1 de 3" never removes two
   @Patch(':id/items/:itemId/cancel')
   cancelItem(
     @Param('id', ParseIntPipe) id: number,

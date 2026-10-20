@@ -25,22 +25,25 @@ class _HomePageState extends ConsumerState<HomePage> {
   @override
   Widget build(BuildContext context) {
     final role = ref.watch(currentUserProvider).role;
+    final tabCount = role == Role.waiter ? 1 : (role == Role.kitchen ? 3 : 4);
+    final index = _index.clamp(0, tabCount - 1);
+    // The board stays mounted in the IndexedStack: it must know when it is on screen (screen-on
+    // lock, and for the owner also sounds and dialogs, only while visible)
     final tabs = switch (role) {
       Role.waiter => const [_Tab('Pedidos', Icons.receipt_long, WaiterOrdersPage())],
-      Role.kitchen => const [
-        _Tab('Cocina', Icons.soup_kitchen, KitchenBoardPage()),
-        _Tab('Platos', Icons.no_meals, DishAvailabilityPage()),
-        _Tab('Insumos', Icons.inventory_2, SuppliesPage(), showsLowStock: true),
+      Role.kitchen => [
+        _Tab('Cocina', Icons.soup_kitchen, KitchenBoardPage(visible: index == 0)),
+        const _Tab('Platos', Icons.no_meals, DishAvailabilityPage()),
+        const _Tab('Insumos', Icons.inventory_2, SuppliesPage(), showsLowStock: true),
       ],
       // Sold-out switches for the owner live in Gestión > Menú
-      Role.owner => const [
-        _Tab('Pedidos', Icons.receipt_long, WaiterOrdersPage()),
-        _Tab('Cocina', Icons.soup_kitchen, KitchenBoardPage()),
-        _Tab('Cierre', Icons.point_of_sale, ReportPage()),
-        _Tab('Gestión', Icons.settings, AdminPage(), showsLowStock: true),
+      Role.owner => [
+        const _Tab('Pedidos', Icons.receipt_long, WaiterOrdersPage()),
+        _Tab('Cocina', Icons.soup_kitchen, KitchenBoardPage(visible: index == 1)),
+        const _Tab('Cierre', Icons.point_of_sale, ReportPage()),
+        const _Tab('Gestión', Icons.settings, AdminPage(), showsLowStock: true),
       ],
     };
-    final index = _index.clamp(0, tabs.length - 1);
     // Waiters never see supplies: their account cannot read them
     final lowStock = role == Role.waiter ? 0 : ref.watch(lowSupplyCountProvider);
 

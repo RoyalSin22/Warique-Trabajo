@@ -68,6 +68,16 @@ export class PaymentsService {
       }
 
       const isCash = dto.method === PaymentMethod.CASH;
+      if (!isCash) {
+        // One Yape/Plin transfer pays once: the same voucher shown twice must not count twice
+        const reused = await tx.payment.findFirst({
+          where: { method: dto.method, operationNumber: dto.operationNumber, ...ACTIVE_PAYMENT },
+          select: { orderId: true },
+        });
+        if (reused) {
+          throw new ConflictException(`Operation number already registered in order #${reused.orderId}`);
+        }
+      }
       await tx.payment.create({
         data: {
           orderId,

@@ -78,9 +78,8 @@ export class ExpensesService {
       amountCents = toCents(dto.amount);
     }
 
-    if (dto.paidWith === PaidWith.CASH) await assertCashDayOpen(this.prisma, day);
-
     const { expense, supplies } = await this.prisma.$transaction(async (tx) => {
+      if (dto.paidWith === PaidWith.CASH) await assertCashDayOpen(tx, day);
       const locked = items.length ? await lockSupplies(tx, items.map((item) => item.supplyId)) : new Map();
       for (const item of items) {
         const supply = locked.get(item.supplyId);

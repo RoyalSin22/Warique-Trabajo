@@ -135,6 +135,15 @@ describe('OrdersService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
+    it('with expectedUpdatedAt, a change made on a stale screen is refused', async () => {
+      prisma.order.findUnique.mockResolvedValue({ status: OrderStatus.IN_PREPARATION, paymentStatus: PaymentStatus.UNPAID, waiterId: 7 });
+      prisma.order.updateMany.mockResolvedValue({ count: 0 }); // dishes were added since: updatedAt moved
+      await expect(
+        service.updateStatus(1, { status: OrderStatus.READY, expectedUpdatedAt: '2026-10-03T15:00:00.000Z' }, kitchen),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.order.updateMany.mock.calls[0][0].where.updatedAt).toEqual(new Date('2026-10-03T15:00:00.000Z'));
+    });
+
     it("a waiter cannot cancel a colleague's order", async () => {
       prisma.order.findUnique.mockResolvedValue({ status: OrderStatus.PENDING, paymentStatus: PaymentStatus.UNPAID, waiterId: 99 });
       await expect(
@@ -175,7 +184,7 @@ describe('OrdersService', () => {
     /** status of the order, active lines after the change, and what was already paid */
     const given = (status: OrderStatus, linesAfter: { unitPrice: string; quantity: number }[], paid: string | null = null) => {
       tx.$queryRaw.mockResolvedValue([{ id: 5 }]);
-      tx.order.findUniqueOrThrow.mockResolvedValue({ status, paidAt: null });
+      tx.order.findUniqueOrThrow.mockResolvedValue({ status, paidAt: null, waiterId: 7, createdAt: new Date() });
       tx.orderItem.findMany.mockResolvedValue(linesAfter);
       tx.payment.aggregate.mockResolvedValue({ _sum: { amount: paid } });
       tx.orderItem.findFirst.mockResolvedValue(line);
@@ -224,6 +233,19 @@ describe('OrdersService', () => {
       given(OrderStatus.IN_PREPARATION, [{ unitPrice: '3.00', quantity: 1 }]);
       await service.cancelItem(5, 20, { reason: 'se acabó' }, owner);
       expect(tx.orderItem.update).toHaveBeenCalled();
+    });
+
+    it("a waiter cannot remove dishes from a colleague's order", async () => {
+      given(OrderStatus.PENDING, [{ unitPrice: '3.00', quantity: 1 }]);
+      tx.order.findUniqueOrThrow.mockResolvedValue({ status: OrderStatus.PENDING, paidAt: null, waiterId: 99, createdAt: new Date() });
+      await expect(service.cancelItem(5, 20, { reason: 'se acabó' }, waiter)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('refuses edits to an order of a day whose cash count is closed', async () => {
+      prisma.dish.findMany.mockResolvedValue([dish(2, 'Chicha', '3.00')]);
+      given(OrderStatus.PENDING, []);
+      tx.$queryRaw.mockResolvedValueOnce([{ id: 5 }]).mockResolvedValueOnce([{ closed_at: new Date() }]);
+      await expect(service.addItems(5, { items: [{ dishId: 2, quantity: 1 }] })).rejects.toThrow('reopen it');
     });
 
     it('removing some units keeps the rest and records a removed twin', async () => {

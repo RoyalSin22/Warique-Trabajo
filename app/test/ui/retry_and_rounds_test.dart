@@ -229,6 +229,43 @@ void main() {
     expect(find.textContaining('2 platos'), findsWidgets);
   });
 
+  testWidgets('a restored draft drops dishes no longer on the menu; an old draft is ignored', (tester) async {
+    Future<void> openWith(Map<String, Object?> draft) async {
+      await tester.pumpWidget(const SizedBox());
+      await pumpWith(tester, const SizedBox(), menuAndTables); // fresh storage
+      await testPrefs.setString('orderDraft:1', jsonEncode(draft));
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            currentSessionProvider.overrideWithValue(testSession(Role.waiter)),
+            sharedPreferencesProvider.overrideWithValue(testPrefs),
+            apiClientProvider.overrideWithValue(
+              ApiClient(baseUrl: testServer, token: 'token', httpClient: MockClient(menuAndTables)),
+            ),
+            realtimeClientProvider.overrideWithValue(FakeRealtime()),
+            realtimeConnectedProvider.overrideWith((ref) => Stream.value(true)),
+          ],
+          child: const MaterialApp(home: NewOrderPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    final lines = [
+      {'dishId': 5, 'quantity': 1, 'note': null},
+      {'dishId': 999, 'quantity': 2, 'note': null}, // deactivated since
+    ];
+    await openWith({'lines': lines, 'type': 'DINE_IN', 'savedAt': DateTime.now().toIso8601String()});
+    expect(find.textContaining('ya no están en la carta'), findsOneWidget);
+    expect(find.textContaining('1 plato'), findsWidgets);
+
+    final old = DateTime.now().subtract(const Duration(hours: 13)).toIso8601String();
+    await openWith({'lines': lines, 'type': 'DINE_IN', 'savedAt': old});
+    expect(find.textContaining('Se recuperó'), findsNothing);
+    expect(testPrefs.getString('orderDraft:1'), isNull);
+  });
+
   testWidgets('connect devices shows the server address as a QR code', (tester) async {
     await pumpWith(tester, const ConnectDevicesPage(), menuAndTables);
     expect(find.text(testServer), findsOneWidget);

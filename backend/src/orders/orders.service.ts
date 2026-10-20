@@ -9,7 +9,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { OrderStatus, OrderType, PaymentStatus, Prisma, Role } from '@prisma/client';
 import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
-import { businessDayRange } from '../common/utils/business-day';
+import { assertCashDayOpen } from '../cash/cash-guard';
+import { businessDateOf, businessDayRange } from '../common/utils/business-day';
 import { fromCents, toCents } from '../common/utils/money';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -150,6 +151,7 @@ export class OrdersService {
       if (!ITEMS_ADDABLE.includes(order.status)) {
         throw new ConflictException('Items can only be added while the kitchen has the order');
       }
+      await this.assertSalesDayOpen(tx, order.createdAt);
       const addedAt = new Date();
       await tx.orderItem.createMany({ data: items.map((item) => ({ ...item, orderId: id, addedAt })) });
       await this.recomputeTotals(tx, id);
@@ -168,6 +170,10 @@ export class OrdersService {
       if (order.status !== OrderStatus.PENDING && actor.role !== Role.OWNER) {
         throw new ForbiddenException('Only the owner can remove items the kitchen already started');
       }
+      if (actor.role === Role.WAITER && order.waiterId !== actor.id) {
+        throw new ForbiddenException('Only the waiter who took the order or the owner can change it');
+      }
+      await this.assertSalesDayOpen(tx, order.createdAt);
 
       const item = await tx.orderItem.findFirst({ where: { id: itemId, orderId: id } });
       if (!item) throw new NotFoundException('Item not found');
@@ -225,11 +231,14 @@ export class OrdersService {
       throw new ConflictException('Cannot cancel an order that already has payments');
     }
 
-    // Optimistic concurrency: only applies if nobody changed the order since we read it
+    // Optimistic concurrency: only applies if nobody changed the order since we read it. With
+    // expectedUpdatedAt (the copy the screen shows) a "Listo" tapped on a stale card is refused
+    // when dishes were added meanwhile.
     const { count } = await this.prisma.order.updateMany({
       where: {
         id,
         status: order.status,
+        ...(dto.expectedUpdatedAt ? { updatedAt: new Date(dto.expectedUpdatedAt) } : {}),
         ...(isCancel ? { paymentStatus: PaymentStatus.UNPAID } : {}),
       },
       data: { status: dto.status, ...(isCancel ? { cancelReason: dto.cancelReason } : {}) },
@@ -290,7 +299,12 @@ export class OrdersService {
   private async lockOrder(tx: Prisma.TransactionClient, id: number) {
     const locked = await tx.$queryRaw<{ id: number }[]>`SELECT id FROM orders WHERE id = ${id} FOR UPDATE`;
     if (locked.length === 0) throw new NotFoundException('Order not found');
-    return tx.order.findUniqueOrThrow({ where: { id }, select: { status: true } });
+    return tx.order.findUniqueOrThrow({ where: { id }, select: { status: true, waiterId: true, createdAt: true } });
+  }
+
+  /** A day whose cash count is closed keeps its sales as counted (a leftover order from yesterday). */
+  private assertSalesDayOpen(tx: Prisma.TransactionClient, createdAt: Date) {
+    return assertCashDayOpen(tx, businessDateOf(createdAt, this.utcOffsetMinutes));
   }
 
   /** Total = active lines; payment status follows. Refuses to go below what was already paid. */

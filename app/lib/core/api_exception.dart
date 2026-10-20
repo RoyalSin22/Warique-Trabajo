@@ -55,6 +55,11 @@ const _knownMessages = <String, String>{
   'price must be greater than 0': 'El precio debe ser mayor que 0.',
   'Only the waiter who took the order or the owner can cancel it':
       'Solo el mozo que tomó el pedido o el dueño pueden cancelarlo.',
+  'Only the waiter who took the order or the owner can change it':
+      'Solo el mozo que tomó el pedido o el dueño pueden modificarlo.',
+  'Use your own password change instead': 'Para tu propia clave usa "Cambiar mi contraseña" en tu cuenta.',
+  'The record is busy, try again': 'Otra persona estaba usando este pedido en ese momento. Intenta de nuevo.',
+  'Invalid request': 'Solicitud inválida.',
   'Session expired': 'Tu sesión ya no es válida (cambiaron tu contraseña). Vuelve a ingresar.',
   'Payment not found': 'El cobro no existe.',
   'cancelReason is required to cancel an order': 'Indica el motivo de la cancelación.',
@@ -108,6 +113,11 @@ String translateServerMessage(int statusCode, String? serverMessage) {
     if (voidStock != null) {
       return 'No se puede anular: de ${voidStock.group(1)} quedan ${_trimQuantity(voidStock.group(2)!)} '
           'de los ${_trimQuantity(voidStock.group(3)!)} comprados. Registra un conteo primero.';
+    }
+    // "Operation number already registered in order #12"
+    final reused = RegExp(r'^Operation number already registered in order #(\d+)').firstMatch(serverMessage);
+    if (reused != null) {
+      return 'Ese número de operación ya se registró en el pedido #${reused.group(1)}. Revisa la captura.';
     }
     if (serverMessage.startsWith('username must be')) {
       return 'Usuario inválido: 3 a 50 caracteres en minúsculas, números, ".", "_" o "-".';

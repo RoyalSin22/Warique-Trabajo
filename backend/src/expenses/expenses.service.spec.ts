@@ -70,11 +70,11 @@ describe('ExpensesService', () => {
   });
 
   it('refuses a cash expense on a day whose cash count is closed (paid by other means: fine)', async () => {
-    tx.cashSession.findUnique.mockResolvedValueOnce({ closedAt: new Date() });
+    tx.$queryRaw.mockResolvedValueOnce([{ closed_at: new Date() }]); // the guard, inside the transaction
     await expect(
       service.create({ ...purchase, items: undefined, category: ExpenseCategory.OTROS, amount: 10 }, owner),
     ).rejects.toThrow('reopen it');
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(tx.expense.create).not.toHaveBeenCalled();
   });
 
   it('validates purchases before touching the database', async () => {

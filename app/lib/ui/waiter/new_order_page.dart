@@ -39,13 +39,24 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
   late OrderType _type = widget.initialType ?? OrderType.dineIn;
   late int? _tableId = widget.initialTableId;
   late final _customerController = TextEditingController(text: widget.initialCustomerName)
-    ..addListener(_contentChanged);
-  late final _notesController = TextEditingController()..addListener(_contentChanged);
+    ..addListener(_textChanged);
+  late final _notesController = TextEditingController()..addListener(_textChanged);
   bool _submitting = false;
 
   /// Idempotency key of the order being sent. Kept across retries of the SAME order (a timeout
   /// may hide a success), discarded as soon as the waiter changes anything.
   String? _requestId;
+
+  /// Controllers also notify on focus and cursor moves (tapping a field after a timeout): only a
+  /// change of the text makes it a different order.
+  String _lastTexts = '';
+
+  void _textChanged() {
+    final now = '${_customerController.text}|${_notesController.text}';
+    if (now == _lastTexts) return;
+    _lastTexts = now;
+    _contentChanged();
+  }
 
   void _contentChanged() {
     _requestId = null;
@@ -58,23 +69,44 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
     _contentChanged();
   });
 
-  /// Only a brand-new order is kept as a draft (adding to an order is a quick, short action).
-  bool get _keepsDraft => widget.addTo == null;
+  /// Only an order started from "Nuevo pedido" is kept as a draft: adding to an order and "otro
+  /// pedido para esta mesa" are short and must not overwrite (or discard) that draft.
+  bool get _keepsDraft => widget.addTo == null && widget.initialTableId == null;
+
+  /// A draft older than a shift is not that order anymore.
+  static const _draftMaxAge = Duration(hours: 12);
 
   int get _userId => ref.read(currentUserProvider).id;
 
   @override
   void initState() {
     super.initState();
-    if (!_keepsDraft || widget.initialTableId != null) return;
-    final draft = ref.read(settingsStoreProvider).orderDraft(_userId);
+    if (!_keepsDraft) return;
+    final store = ref.read(settingsStoreProvider);
+    final draft = store.orderDraft(_userId);
     if (draft == null) return;
-    _cart.restore(draft);
-    if (_cart.isEmpty) return;
-    _type = draft['type'] == OrderType.takeaway.api ? OrderType.takeaway : OrderType.dineIn;
-    _tableId = draft['tableId'] as int?;
-    _customerController.text = draft['customerName'] as String? ?? '';
-    _notesController.text = draft['notes'] as String? ?? '';
+    try {
+      final savedAt = DateTime.tryParse(draft['savedAt'] as String? ?? '');
+      if (savedAt == null || DateTime.now().difference(savedAt) > _draftMaxAge) {
+        store.setOrderDraft(_userId, null);
+        return;
+      }
+      _cart.restore(draft);
+      if (_cart.isEmpty) return;
+      _type = draft['type'] == OrderType.takeaway.api ? OrderType.takeaway : OrderType.dineIn;
+      _tableId = draft['tableId'] as int?;
+      final customer = draft['customerName'] as String? ?? '';
+      final notes = draft['notes'] as String? ?? '';
+      _lastTexts = '$customer|$notes'; // restoring is not an edit: keeps the saved key below
+      _customerController.text = customer;
+      _notesController.text = notes;
+      // Same key as before the interruption: if that order did reach the kitchen, resending it
+      // returns it instead of creating a second one
+      _requestId = draft['requestId'] as String?;
+    } catch (_) {
+      store.setOrderDraft(_userId, null); // written by another version: start clean
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) showInfoSnack(context, 'Se recuperó el pedido que estabas armando.');
     });
@@ -94,6 +126,8 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
                   'tableId': _tableId,
                   'customerName': _customerController.text,
                   'notes': _notesController.text,
+                  'requestId': _requestId,
+                  'savedAt': DateTime.now().toIso8601String(),
                 },
         );
   }
@@ -158,6 +192,7 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
     }
     setState(() => _submitting = true);
     _requestId ??= newRequestId();
+    _saveDraft(); // keeps the key with the draft in case the screen closes before the answer
     try {
       final repository = ref.read(ordersRepositoryProvider);
       final addTo = widget.addTo;
@@ -220,16 +255,37 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
     if (confirmed == true && mounted) await _submit(menu);
   }
 
+  /// Dishes no longer on the menu at all (deactivated, or in a restored draft) have no row to
+  /// remove them from: drop them and say so, instead of blocking the order.
+  void _dropMissing(List<Dish> dishes) {
+    final known = {for (final dish in dishes) dish.id};
+    final missing = [
+      for (final id in _cart.dishIds)
+        if (!known.contains(id)) id,
+    ];
+    if (missing.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _change(() => missing.forEach(_cart.removeDish));
+      showInfoSnack(
+        context,
+        'Se quitaron del pedido ${missing.length} plato(s) que ya no están en la carta.',
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final menuAsync = ref.watch(menuProvider);
     final addTo = widget.addTo;
+    if (menuAsync.value case final dishes?) _dropMissing(dishes);
 
     // An accidental back swipe must not throw away a cart the waiter spent a minute on
     return PopScope(
-      canPop: _cart.isEmpty || _submitting,
+      // While sending, stay: leaving could lose the answer and the order would be resent later
+      canPop: _cart.isEmpty && !_submitting,
       onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
+        if (didPop || _submitting) return;
         final discard = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(

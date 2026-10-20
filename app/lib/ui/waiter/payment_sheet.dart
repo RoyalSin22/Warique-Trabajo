@@ -27,13 +27,21 @@ class _PaymentSheetState extends ConsumerState<PaymentSheet> {
     ..addListener(_paymentChanged);
   late final _receivedController = TextEditingController()..addListener(_paymentChanged);
   late final _operationController = TextEditingController()..addListener(_paymentChanged);
+
+  /// Controllers also notify on focus and cursor moves: only a change of the text is a new payment.
+  String _lastSeen = '';
   bool _submitting = false;
 
   /// Idempotency key: a retry of the same payment after a timeout is never registered twice.
   /// Any change to the form makes it a different payment.
   String? _requestId;
 
-  void _paymentChanged() => _requestId = null;
+  void _paymentChanged() {
+    final now = '${_amountController.text}|${_receivedController.text}|${_operationController.text}';
+    if (now == _lastSeen) return;
+    _lastSeen = now;
+    _requestId = null;
+  }
 
   static final _operationPattern = RegExp(r'^[A-Za-z0-9-]{4,30}$'); // same as CreatePaymentDto
   static final _moneyInput = FilteringTextInputFormatter.allow(RegExp(r'^\d{0,5}([.,]\d{0,2})?'));

@@ -85,7 +85,7 @@ are for a development machine.
 | GET | `/auth/me` | all |
 | PATCH | `/auth/password` | all (own password) |
 | GET / POST | `/users` | OWNER |
-| PATCH | `/users/:id`, `/users/:id/password` | OWNER |
+| PATCH | `/users/:id`, `/users/:id/password` | OWNER (not their own password: that is `/auth/password`) |
 | GET | `/categories`, `/dishes`, `/dishes/:id`, `/tables` | all |
 | POST / PATCH | `/categories`, `/dishes`, `/tables` | OWNER |
 | PATCH | `/dishes/:id/availability` | OWNER, KITCHEN |
@@ -132,7 +132,9 @@ prefixed with `'` (CSV injection). The download link is signed with a key derive
 | A purchase (expense with `items`) is always `INSUMOS`, its amount is the sum of the lines, and its stock goes in within the same transaction (rows locked in id order: no deadlocks) | Expense and stock always agree |
 | Expenses are voided with a reason, never deleted; voiding a purchase takes its stock back out (refused if part of it was already used: count first) | Audit trail |
 | Order lines added after sending are marked (`added_at`); removed lines keep who/when/why (`cancelled_*`) and count in no total, report or kitchen view; the total never drops below what was paid and the last line cannot be removed | Orders change at the table without losing the audit trail |
-| Cash payments, cash expenses and their voids are refused on a day whose cash count is closed (`409`) until the owner reopens it | The counted snapshot cannot drift silently |
+| Cash payments, cash expenses and their voids, and edits to that day's orders, are refused on a day whose cash count is closed (`409`) until the owner reopens it. Movements take a shared lock on the day's cash session and closing takes an exclusive one, so a closing never misses a movement in flight | The counted snapshot cannot drift silently |
+| A Yape/Plin operation number counts once (refused if an active payment already has it) | One transfer cannot pay two orders |
+| Status changes may carry `expectedUpdatedAt` (the app always sends it); a change made on a stale copy is refused (`409`) | "Listo" cannot skip dishes added a second earlier |
 | Changing or resetting a password increments `users.token_version`: older tokens and sockets are refused at once; sockets also close when their token expires | A lost phone is locked out immediately |
 | The kitchen's realtime feed and `GET /orders/:id` carry no payment details | Least privilege |
 | Payments are voided by the owner with a reason, never deleted; a voided payment is listed (crossed out) but counts in no balance, report, cash count or daily CSV | A wrong method or amount is fixed without losing the audit trail |
@@ -140,10 +142,11 @@ prefixed with `'` (CSV injection). The download link is signed with a key derive
 | "Ventas − gastos" is a cash view, not accounting profit | A purchase counts fully on the day it is paid |
 
 **Retries never duplicate orders or payments.** The app sends an `Idempotency-Key` (UUID) with every
-new order, added dishes, payment, expense and stock movement, and reuses it when the waiter retries
+new order, added or removed dishes, payment, expense and stock movement, and reuses it when the waiter retries
 after a network error; the server runs the request once per user + URL + key and replays the first
 result to retries, including retries that arrive while the first request is still running. Successful
-responses are also kept 15 minutes in `idempotency_keys` (SHA-256 of the key), so a retry that spans
+responses are also kept 15 minutes in `idempotency_keys` (SHA-256 of user + URL + key + body: a key
+reused for a different request runs it instead of replaying another response), so a retry that spans
 a restart of the PC is recognised too; older responses are blanked (the app account has no DELETE).
 A failed request is not remembered, so it can be retried with the same key.
 

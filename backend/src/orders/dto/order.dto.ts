@@ -7,6 +7,7 @@ import {
   IsArray,
   IsEnum,
   IsInt,
+  IsISO8601,
   IsOptional,
   IsString,
   Matches,
@@ -93,6 +94,11 @@ export class CancelOrderItemDto {
 export class UpdateOrderStatusDto {
   @IsEnum(OrderStatus)
   status!: OrderStatus;
+
+  /** updatedAt of the copy the client shows; the change is refused if the order changed since. */
+  @IsOptional()
+  @IsISO8601()
+  expectedUpdatedAt?: string;
 
   @IsOptional()
   @Trim()

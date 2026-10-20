@@ -58,7 +58,9 @@ export class UsersService {
   }
 
   /** Every open session of that user ends at once (e.g. a stolen phone). */
-  async resetPassword(id: number, password: string) {
+  async resetPassword(id: number, password: string, actor?: AuthenticatedUser) {
+    // Resetting your own would end this very session with no new token: use "Cambiar mi contraseña"
+    if (actor && id === actor.id) throw new BadRequestException('Use your own password change instead');
     const user = await this.prisma.user.update({
       where: { id },
       data: { passwordHash: await hashPassword(password), tokenVersion: { increment: 1 } },

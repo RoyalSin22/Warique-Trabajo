@@ -98,14 +98,24 @@ describe('PaymentsService', () => {
 
   it('refuses a cash payment once the day\'s cash count is closed; Yape still goes through', async () => {
     givenOrder();
-    tx.cashSession.findUnique.mockResolvedValue({ closedAt: new Date() });
+    tx.$queryRaw.mockResolvedValueOnce([{ id: 1 }]).mockResolvedValueOnce([{ closed_at: new Date() }]);
     await expect(
       service.register(1, { method: PaymentMethod.CASH, amount: 40, amountReceived: 40 }, waiter),
     ).rejects.toThrow('reopen it');
     expect(tx.payment.create).not.toHaveBeenCalled();
 
+    tx.$queryRaw.mockResolvedValue([{ id: 1 }]);
     await service.register(1, { method: PaymentMethod.YAPE, amount: 40, operationNumber: '123456' }, waiter);
     expect(tx.payment.create).toHaveBeenCalled();
+  });
+
+  it('refuses a Yape/Plin operation number already used by an active payment', async () => {
+    givenOrder();
+    tx.payment.findFirst.mockResolvedValueOnce({ orderId: 12 });
+    await expect(
+      service.register(1, { method: PaymentMethod.YAPE, amount: 40, operationNumber: '123456' }, waiter),
+    ).rejects.toThrow('order #12');
+    expect(tx.payment.create).not.toHaveBeenCalled();
   });
 
   it('rejects payments on cancelled orders', async () => {
@@ -175,7 +185,7 @@ describe('PaymentsService', () => {
 
     it('refuses to void a cash payment of a day whose cash count is closed', async () => {
       givenPayment(null, null);
-      tx.cashSession.findUnique.mockResolvedValue({ closedAt: new Date() });
+      tx.$queryRaw.mockResolvedValueOnce([{ id: 1 }]).mockResolvedValueOnce([{ closed_at: new Date() }]);
       await expect(service.void(1, 5, 'era Yape', owner)).rejects.toThrow(ConflictException);
       expect(tx.payment.update).not.toHaveBeenCalled();
     });

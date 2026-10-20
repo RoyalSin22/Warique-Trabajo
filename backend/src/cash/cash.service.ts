@@ -63,21 +63,25 @@ export class CashService {
   async close(date: string | undefined, countedAmount: number, notes: string | undefined, actor: AuthenticatedUser) {
     const range = this.range(date);
     const businessDate = toDateColumn(range.date);
-    const session = await this.prisma.cashSession.findUnique({ where: { businessDate } });
-    if (!session) throw new ConflictException('Open the cash count with the change fund first');
+    await this.prisma.$transaction(async (tx) => {
+      // Waits for cash movements in flight on this day (they hold a shared lock) and blocks new ones
+      await this.lockSession(tx, range.date);
+      const session = await tx.cashSession.findUnique({ where: { businessDate } });
+      if (!session) throw new ConflictException('Open the cash count with the change fund first');
 
-    const { expectedCents } = await this.balance(range, toCents(session.openingAmount));
-    const countedCents = toCents(countedAmount);
-    await this.prisma.cashSession.update({
-      where: { businessDate },
-      data: {
-        expectedAmount: fromCents(expectedCents),
-        countedAmount: fromCents(countedCents),
-        difference: fromCents(countedCents - expectedCents),
-        notes: notes || null,
-        closedBy: actor.id,
-        closedAt: new Date(),
-      },
+      const { expectedCents } = await this.balance(range, toCents(session.openingAmount), tx);
+      const countedCents = toCents(countedAmount);
+      await tx.cashSession.update({
+        where: { businessDate },
+        data: {
+          expectedAmount: fromCents(expectedCents),
+          countedAmount: fromCents(countedCents),
+          difference: fromCents(countedCents - expectedCents),
+          notes: notes || null,
+          closedBy: actor.id,
+          closedAt: new Date(),
+        },
+      });
     });
     return this.day(range.date);
   }
@@ -86,11 +90,14 @@ export class CashService {
   async reopen(date: string | undefined) {
     const range = this.range(date);
     const businessDate = toDateColumn(range.date);
-    const session = await this.prisma.cashSession.findUnique({ where: { businessDate } });
-    if (!session?.closedAt) throw new ConflictException('The cash count for this day is not closed');
-    await this.prisma.cashSession.update({
-      where: { businessDate },
-      data: { expectedAmount: null, countedAmount: null, difference: null, closedBy: null, closedAt: null },
+    await this.prisma.$transaction(async (tx) => {
+      await this.lockSession(tx, range.date);
+      const session = await tx.cashSession.findUnique({ where: { businessDate } });
+      if (!session?.closedAt) throw new ConflictException('The cash count for this day is not closed');
+      await tx.cashSession.update({
+        where: { businessDate },
+        data: { expectedAmount: null, countedAmount: null, difference: null, closedBy: null, closedAt: null },
+      });
     });
     return this.day(range.date);
   }
@@ -102,13 +109,21 @@ export class CashService {
     return range;
   }
 
-  private async balance(range: { date: string; start: Date; end: Date }, openingCents: number) {
+  private async lockSession(tx: Prisma.TransactionClient, date: string): Promise<void> {
+    await tx.$queryRaw`SELECT id FROM cash_sessions WHERE business_date = ${date} FOR UPDATE`;
+  }
+
+  private async balance(
+    range: { date: string; start: Date; end: Date },
+    openingCents: number,
+    client: Pick<Prisma.TransactionClient, 'payment' | 'expense'> = this.prisma,
+  ) {
     const [payments, expenses] = await Promise.all([
-      this.prisma.payment.aggregate({
+      client.payment.aggregate({
         where: { method: PaymentMethod.CASH, createdAt: { gte: range.start, lt: range.end }, ...ACTIVE_PAYMENT },
         _sum: { amount: true },
       }),
-      this.prisma.expense.aggregate({
+      client.expense.aggregate({
         where: { businessDate: toDateColumn(range.date), paidWith: PaidWith.CASH, isVoid: false },
         _sum: { amount: true },
       }),

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/alerts.dart';
 import '../../models/order.dart';
+import '../../models/user.dart';
 import '../../state/orders.dart';
 import '../../state/session.dart';
 import '../widgets/common.dart';
@@ -13,7 +14,10 @@ import '../widgets/order_watchers.dart';
 /// Kitchen queue, oldest first: "Pendientes" and "En preparación".
 /// Two columns on tablets/PC, two tabs on phones.
 class KitchenBoardPage extends ConsumerStatefulWidget {
-  const KitchenBoardPage({super.key});
+  const KitchenBoardPage({super.key, this.visible = true});
+
+  /// False while another tab of the home screen is shown (the board stays mounted).
+  final bool visible;
 
   @override
   ConsumerState<KitchenBoardPage> createState() => _KitchenBoardPageState();
@@ -31,30 +35,46 @@ class _KitchenBoardPageState extends ConsumerState<KitchenBoardPage> {
   /// New orders nobody has started yet: they ring again on every tick until someone taps "Empezar".
   final _fresh = <int>{};
 
-  /// Web only: false until the page is touched once (browsers block sound before that).
+  /// Web only: false while the browser keeps sound off (page not touched yet, or suspended again
+  /// after the tablet was locked / the app switched).
   late bool _alertsArmed;
+
+  /// "NO preparar" warnings not yet acknowledged: one dialog lists them all instead of stacking.
+  final _notices = <String>[];
+  bool _noticeOpen = false;
+  int _noticeGeneration = 0;
+
+  /// The cook hears new orders from any tab of the kitchen account; the owner only while the
+  /// board is on screen (the owner's phone must not ring on Cierre or Gestión).
+  bool get _alertsOn => widget.visible || ref.read(currentUserProvider).role == Role.kitchen;
 
   @override
   void initState() {
     super.initState();
     _alerts = ref.read(alertsProvider);
     _alertsArmed = !_alerts.needsUserGesture;
-    _alerts.keepScreenOn(true);
+    if (widget.visible) _alerts.keepScreenOn(true);
     // Refreshes "hace N min" without touching the network, and repeats the alert
     _ticker = Timer.periodic(const Duration(seconds: 30), (_) {
       setState(() {
         _now = DateTime.now();
-        // Any tap on the page unlocks sound too, not only the banner's button
-        if (!_alertsArmed && !_alerts.needsUserGesture) _alertsArmed = true;
+        // Both ways: any tap unlocks sound, and iPad suspends it again after a lock
+        _alertsArmed = !_alerts.needsUserGesture;
       });
-      if (_unstartedFresh().isNotEmpty) _alerts.play(AlertTone.newOrder);
+      if (_alertsOn && _unstartedFresh().isNotEmpty) _alerts.play(AlertTone.newOrder);
     });
+  }
+
+  @override
+  void didUpdateWidget(KitchenBoardPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.visible != widget.visible) _alerts.keepScreenOn(widget.visible);
   }
 
   @override
   void dispose() {
     _ticker.cancel();
-    _alerts.keepScreenOn(false);
+    if (widget.visible) _alerts.keepScreenOn(false);
     super.dispose();
   }
 
@@ -73,7 +93,10 @@ class _KitchenBoardPageState extends ConsumerState<KitchenBoardPage> {
   Future<void> _advance(Order order, OrderStatus to) async {
     setState(() => _busy.add(order.id));
     try {
-      final updated = await ref.read(ordersRepositoryProvider).changeStatus(order.id, to);
+      // The copy on screen: if dishes were added meanwhile, the server refuses "Listo"
+      final updated = await ref
+          .read(ordersRepositoryProvider)
+          .changeStatus(order.id, to, expectedUpdatedAt: order.updatedAt);
       ref.read(ordersProvider.notifier).upsert(updated);
     } catch (error) {
       if (mounted) showErrorSnack(context, error);
@@ -84,64 +107,69 @@ class _KitchenBoardPageState extends ConsumerState<KitchenBoardPage> {
   }
 
   void _onOrdersChanged(List<Order>? before, List<Order>? after) {
-    if (before == null || after == null) return;
+    if (before == null || after == null || !_alertsOn) return;
     final changes = OrderChanges(before, after);
-    final created = changes.created.where((o) => o.status == OrderStatus.pending).toList();
-    if (created.isNotEmpty) {
-      setState(() => _fresh.addAll(created.map((o) => o.id)));
-      _alerts.play(AlertTone.newOrder);
-      showInfoSnack(context, 'Nuevo pedido: ${created.map((o) => '#${o.id} ${o.target}').join(', ')}');
-    }
     String lines(List<OrderItem> items) => items.map((i) => '${i.quantity}× ${i.dishName}').join(', ');
     bool inKitchen(Order order) =>
         order.status == OrderStatus.pending || order.status == OrderStatus.inPreparation;
-    final added = changes.itemsAdded.where((change) => inKitchen(change.order)).toList();
-    if (added.isNotEmpty) {
+
+    final news = <String>[];
+    final created = changes.created.where((o) => o.status == OrderStatus.pending).toList();
+    if (created.isNotEmpty) {
+      setState(() => _fresh.addAll(created.map((o) => o.id)));
+      news.add('Nuevo pedido: ${created.map((o) => '#${o.id} ${o.target}').join(', ')}');
+    }
+    for (final change in changes.itemsAdded.where((change) => inKitchen(change.order))) {
+      news.add('Se agregó a #${change.order.id} ${change.order.target}: ${lines(change.items)}');
+    }
+    if (news.isNotEmpty) {
       _alerts.play(AlertTone.newOrder);
-      showInfoSnack(
-        context,
-        added.map((c) => 'Se agregó a #${c.order.id} ${c.order.target}: ${lines(c.items)}').join('\n'),
-      );
+      showInfoSnack(context, news.join('\n')); // one snack: a second one would hide the first
     }
-    final removed = changes.itemsRemoved.where((change) => inKitchen(change.order)).toList();
-    if (removed.isNotEmpty) {
-      _alerts.play(AlertTone.cancelled);
-      showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          icon: const Icon(Icons.remove_circle_outline, size: 40),
-          title: const Text('Se quitó un plato'),
-          content: Text(
-            [
-              for (final change in removed)
-                '#${change.order.id} ${change.order.target}: NO preparar ${lines(change.items)}'
-                    '${change.items.first.cancelReason == null ? '' : '\nMotivo: ${change.items.first.cancelReason}'}',
-            ].join('\n\n'),
-          ),
-          actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Entendido'))],
-        ),
-      );
-    }
-    final cancelled = changes.cancelledInKitchen().toList();
-    if (cancelled.isNotEmpty) {
-      _alerts.play(AlertTone.cancelled);
+
+    final warnings = [
+      for (final change in changes.itemsRemoved.where((change) => inKitchen(change.order)))
+        'Se quitó de #${change.order.id} ${change.order.target}: NO preparar ${lines(change.items)}'
+            '${change.items.first.cancelReason == null ? '' : '\nMotivo: ${change.items.first.cancelReason}'}',
       // Critical for the kitchen: stop cooking it
-      showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          icon: const Icon(Icons.warning_amber, size: 40),
-          title: const Text('Pedido cancelado'),
-          content: Text(
-            [
-              for (final order in cancelled)
-                '#${order.id} ${order.target}: ${order.activeItems.map((i) => '${i.quantity}× ${i.dishName}').join(', ')}'
-                    '${order.cancelReason == null ? '' : '\nMotivo: ${order.cancelReason}'}',
-            ].join('\n\n'),
-          ),
-          actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Entendido'))],
-        ),
-      );
+      for (final order in changes.cancelledInKitchen())
+        'PEDIDO CANCELADO #${order.id} ${order.target}: ${lines(order.activeItems)}'
+            '${order.cancelReason == null ? '' : '\nMotivo: ${order.cancelReason}'}',
+    ];
+    if (warnings.isNotEmpty) {
+      _alerts.play(AlertTone.cancelled);
+      _showNotices(warnings);
     }
+  }
+
+  /// One dialog with every pending warning; new ones while it is open replace it with the full list.
+  void _showNotices(List<String> warnings) {
+    _notices.addAll(warnings);
+    if (_noticeOpen) Navigator.of(context, rootNavigator: true).pop();
+    _noticeOpen = true;
+    final generation = ++_noticeGeneration;
+    final shown = List<String>.of(_notices);
+    showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.warning_amber, size: 40),
+        title: Text(shown.length == 1 ? 'Atención cocina' : 'Atención cocina (${shown.length})'),
+        content: SingleChildScrollView(child: Text(shown.join('\n\n'))),
+        actions: [
+          FilledButton(
+            onPressed: () {
+              _notices.clear();
+              Navigator.pop(dialogContext);
+            },
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    ).then((_) {
+      // A dialog replaced by a newer one must not mark the newer one as closed
+      if (generation == _noticeGeneration) _noticeOpen = false;
+    });
   }
 
   @override

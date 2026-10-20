@@ -47,6 +47,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       if ((payload.tv ?? 0) !== user.tokenVersion) throw new Error('Outdated token');
 
       await client.join([STAFF_ROOM, userRoom(payload.sub), roleRoom(user.role)]);
+      // A password change between the check and the join would have missed this socket
+      const after = await this.prisma.user.findUnique({ where: { id: payload.sub }, select: { tokenVersion: true, isActive: true } });
+      if (!after?.isActive || after.tokenVersion !== user.tokenVersion) throw new Error('Session changed while connecting');
       if (payload.exp) {
         const ms = Math.max(payload.exp * 1000 - Date.now(), 0);
         // setTimeout caps at ~24.8 days; tokens last hours

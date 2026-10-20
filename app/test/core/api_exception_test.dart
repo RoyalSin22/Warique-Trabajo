@@ -49,4 +49,11 @@ void main() {
       'No se puede anular: de Limón quedan 3 de los 10 comprados. Registra un conteo primero.',
     );
   });
+
+  test('translates a reused Yape/Plin operation number with the order it belongs to', () {
+    expect(
+      translateServerMessage(409, 'Operation number already registered in order #12'),
+      'Ese número de operación ya se registró en el pedido #12. Revisa la captura.',
+    );
+  });
 }

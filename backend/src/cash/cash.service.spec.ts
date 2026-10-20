@@ -6,11 +6,19 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CashService } from './cash.service';
 
 describe('CashService', () => {
-  const prisma = {
+  const prisma: Record<string, unknown> & {
+    cashSession: { findUnique: jest.Mock; upsert: jest.Mock; update: jest.Mock };
+    payment: { aggregate: jest.Mock };
+    expense: { aggregate: jest.Mock };
+    $queryRaw: jest.Mock;
+  } = {
     cashSession: { findUnique: jest.fn(), upsert: jest.fn(), update: jest.fn() },
     payment: { aggregate: jest.fn() },
     expense: { aggregate: jest.fn() },
+    $queryRaw: jest.fn().mockResolvedValue([]),
   };
+  // close/reopen run in a transaction that locks the session row
+  prisma.$transaction = jest.fn((callback: (client: typeof prisma) => unknown) => callback(prisma));
   const service = new CashService(prisma as unknown as PrismaService, { get: () => -300 } as unknown as ConfigService);
   const owner = { id: 1, username: 'owner', fullName: 'Dueño', role: Role.OWNER };
   const date = '2026-10-02';

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_exception.dart';
+import '../../core/ids.dart';
 import '../../core/money.dart';
 import '../../models/order.dart';
 import '../../models/user.dart';
@@ -101,6 +102,8 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
       builder: (_) => _RemoveItemDialog(item: item),
     );
     if (result == null) return;
+    // One key per confirmed removal: a retry after a timeout never takes out a second unit
+    final requestId = newRequestId();
     await _run(
       () => ref
           .read(ordersRepositoryProvider)
@@ -109,6 +112,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
             item.id,
             result.reason,
             quantity: result.quantity == item.quantity ? null : result.quantity,
+            requestId: requestId,
           ),
       'Se quitó ${result.quantity}× ${item.dishName}',
       successMessageOf: (updated) =>
@@ -117,7 +121,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
   }
 
   Future<void> _changeStatus(Order order, OrderStatus to) => _run(
-    () => ref.read(ordersRepositoryProvider).changeStatus(order.id, to),
+    () => ref.read(ordersRepositoryProvider).changeStatus(order.id, to, expectedUpdatedAt: order.updatedAt),
     'Pedido #${order.id}: ${to.label}',
   );
 
