@@ -95,6 +95,11 @@ Check 'ACL: logs writable by the service' {
         $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -eq 'S-1-5-19' }
     "$($rule.FileSystemRights)" -match 'Modify'
 }
+Check 'ACL: the installer package folder is closed to Users (its migrations run as root)' {
+    $sids = @(Sids "$env:ProgramData\WariqueInstalador")
+    Write-Host "      $($sids -join ' ')"
+    -not ($sids -contains 'S-1-5-32-545') -and ($sids -contains 'S-1-5-32-544')
+}
 Check 'backup task runs as SYSTEM at 19:30' {
     $task = Get-ScheduledTask -TaskName 'Warique - Respaldo diario'
     $task.Principal.UserId -eq 'SYSTEM' -and ([datetime]$task.Triggers[0].StartBoundary).ToString('HH:mm') -eq '19:30'
