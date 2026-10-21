@@ -5,6 +5,7 @@ import {
   Injectable,
   NestInterceptor,
 } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { Request } from 'express';
 import { from, lastValueFrom, Observable } from 'rxjs';
 import { AuthenticatedUser } from '../../auth/interfaces/authenticated-user.interface';
@@ -30,7 +31,10 @@ export class IdempotencyInterceptor implements NestInterceptor {
     if (typeof header !== 'string' || !KEY_PATTERN.test(header)) {
       throw new BadRequestException('Idempotency-Key must be 8-64 letters, digits or "-"');
     }
-    const key = `${request.user?.id ?? 'anonymous'}:${request.method}:${request.originalUrl}:${header}`;
+    // The body is part of the key: a key reused for a different request runs it instead of
+    // replaying an unrelated response (e.g. another amount)
+    const body = createHash('sha256').update(JSON.stringify(request.body ?? null)).digest('hex');
+    const key = `${request.user?.id ?? 'anonymous'}:${request.method}:${request.originalUrl}:${header}:${body}`;
     return from(this.store.run(key, () => lastValueFrom(next.handle())));
   }
 }

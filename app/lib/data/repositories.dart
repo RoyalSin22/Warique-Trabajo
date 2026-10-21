@@ -18,8 +18,13 @@ class AuthRepository {
 
   Future<AppUser> me() async => AppUser.fromJson(await _api.get('/auth/me') as Json);
 
-  Future<void> changeOwnPassword(String currentPassword, String newPassword) =>
-      _api.patch('/auth/password', {'currentPassword': currentPassword, 'newPassword': newPassword});
+  /// Returns this device's new token: every other session of the account (a lost phone) ends.
+  Future<String> changeOwnPassword(String currentPassword, String newPassword) async {
+    final json =
+        await _api.patch('/auth/password', {'currentPassword': currentPassword, 'newPassword': newPassword})
+            as Json;
+    return json['accessToken'] as String;
+  }
 }
 
 class MenuRepository {
@@ -99,10 +104,35 @@ class OrdersRepository {
     return Order.fromJson(json as Json);
   }
 
-  Future<Order> changeStatus(int id, OrderStatus status, {String? cancelReason}) async {
+  /// More dishes for an order the kitchen has not finished (same order, marked as added).
+  Future<Order> addItems(int id, List<NewOrderItem> items, {String? requestId}) async {
+    final json = await _api.post('/orders/$id/items', {
+      'items': [for (final item in items) item.toJson()],
+    }, _idempotency(requestId));
+    return Order.fromJson(json as Json);
+  }
+
+  /// Removes a line, or [quantity] units of it, with a reason.
+  Future<Order> cancelItem(int id, int itemId, String reason, {int? quantity, String? requestId}) async {
+    final json = await _api.patch('/orders/$id/items/$itemId/cancel', {
+      'reason': reason.trim(),
+      'quantity': ?quantity,
+    }, _idempotency(requestId));
+    return Order.fromJson(json as Json);
+  }
+
+  /// [expectedUpdatedAt]: the copy the screen shows; the server refuses the change if the order
+  /// changed since (e.g. dishes were added while the cook was tapping "Listo").
+  Future<Order> changeStatus(
+    int id,
+    OrderStatus status, {
+    String? cancelReason,
+    DateTime? expectedUpdatedAt,
+  }) async {
     final json = await _api.patch('/orders/$id/status', {
       'status': status.api,
       if (cancelReason != null) 'cancelReason': cancelReason.trim(),
+      if (expectedUpdatedAt != null) 'expectedUpdatedAt': expectedUpdatedAt.toUtc().toIso8601String(),
     });
     return Order.fromJson(json as Json);
   }

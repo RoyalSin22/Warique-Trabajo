@@ -141,6 +141,70 @@ void main() {
     expect(find.textContaining('Cobrar'), findsNothing);
   });
 
+  group('removing a dish from a sent order', () {
+    void serve(String status) => http = RecordingHttp(
+      (request) => switch ((request.method, request.url.path)) {
+        ('GET', '/api/orders') => (200, <Object>[]),
+        ('GET', '/api/orders/4') => (200, orderJson(id: 4, status: status, payments: [])),
+        ('PATCH', '/api/orders/4/items/10/cancel') => (
+          200,
+          orderJson(
+            id: 4,
+            status: status,
+            total: '21.5',
+            updatedAt: '2026-10-03T15:40:00.000Z',
+            payments: [],
+            items: [
+              {...defaultOrderItems()[0], 'quantity': 1, 'subtotal': '18.5'},
+              {
+                ...defaultOrderItems()[0],
+                'id': 13,
+                'quantity': 1,
+                'subtotal': '18.5',
+                'cancelledAt': '2026-10-03T15:40:00.000Z',
+                'cancelReason': 'se acabó',
+              },
+              defaultOrderItems()[1],
+            ],
+          ),
+        ),
+        _ => (404, {'message': 'Not found'}),
+      },
+    );
+
+    testWidgets('the waiter removes one of two units while it is pending', (tester) async {
+      serve('PENDING');
+      await pump(tester, const OrderDetailPage(orderId: 4));
+
+      await tester.tap(find.byTooltip('Quitar Ceviche'));
+      await tester.pumpAndSettle();
+      expect(find.text('2 de 2'), findsOneWidget);
+      await tester.tap(find.byTooltip('Menos'));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), 'se acabó');
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Quitar'));
+      await tester.pumpAndSettle();
+
+      final patch = http.requests.indexWhere((r) => r.method == 'PATCH');
+      expect(http.bodyOf(patch), {'reason': 'se acabó', 'quantity': 1});
+      expect(find.textContaining('QUITADO: se acabó'), findsOneWidget);
+      expect(find.textContaining('Nuevo total: S/ 21.50'), findsOneWidget);
+    });
+
+    testWidgets('once the kitchen started, the waiter cannot remove dishes', (tester) async {
+      serve('IN_PREPARATION');
+      await pump(tester, const OrderDetailPage(orderId: 4));
+      expect(find.byTooltip('Quitar Ceviche'), findsNothing);
+    });
+
+    testWidgets('the owner sees the remove buttons after the kitchen started', (tester) async {
+      serve('IN_PREPARATION');
+      await pump(tester, const OrderDetailPage(orderId: 4), role: Role.owner);
+      expect(find.byTooltip('Quitar Ceviche'), findsOneWidget);
+    });
+  });
+
   group('voiding a payment', () {
     Map<String, dynamic> cashPayment({String? voidedAt}) => {
       'id': 30,

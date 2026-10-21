@@ -26,12 +26,13 @@ export class AuthController {
   }
 
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  /** Returns a new token: the old one (and every other session) stops working. */
   @Patch('password')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   changeOwnPassword(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: ChangeOwnPasswordDto,
-  ): Promise<void> {
+  ): Promise<LoginResult> {
     return this.authService.changeOwnPassword(user.id, dto);
   }
 }

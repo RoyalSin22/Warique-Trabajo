@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -31,6 +33,22 @@ class SettingsStore {
 
   Future<void> setToken(String? token) =>
       token == null ? _prefs.remove(_tokenKey) : _prefs.setString(_tokenKey, token);
+
+  /// The order a waiter was building, per user: survives a session that ended mid-order
+  /// (expired token, password reset) or a closed browser tab.
+  Map<String, Object?>? orderDraft(int userId) {
+    final raw = _prefs.getString('orderDraft:$userId');
+    if (raw == null) return null;
+    try {
+      return jsonDecode(raw) as Map<String, Object?>;
+    } catch (_) {
+      return null; // corrupt or from an older version: ignore
+    }
+  }
+
+  Future<void> setOrderDraft(int userId, Map<String, Object?>? draft) => draft == null
+      ? _prefs.remove('orderDraft:$userId')
+      : _prefs.setString('orderDraft:$userId', jsonEncode(draft));
 }
 
 /// "192.168.1.50:3000/" -> "http://192.168.1.50:3000"

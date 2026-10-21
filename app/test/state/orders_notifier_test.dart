@@ -11,6 +11,8 @@ import '../support/container.dart';
 import '../support/fixtures.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized(); // the notifier listens to app resume
+
   late FakeRealtime realtime;
   late List<Map<String, dynamic>> serverOrders;
   late RecordingHttp http;
@@ -94,5 +96,19 @@ void main() {
 
     expect(container.read(ordersProvider).value!.map((o) => o.id), [1, 3]);
     expect(http.requests, hasLength(2));
+  });
+
+  test('a refresh never replaces a newer copy that arrived by event', () async {
+    await load();
+    realtime.emit(
+      RealtimeEvent.orderUpdated,
+      orderJson(id: 1, status: 'READY', updatedAt: '2026-10-03T15:05:00.000Z'),
+    );
+    await pumpEventQueue();
+    // The server snapshot was taken before the cook tapped "Listo"
+    serverOrders = [orderJson(id: 1, status: 'IN_PREPARATION', updatedAt: '2026-10-03T15:04:00.000Z')];
+    await container.read(ordersProvider.notifier).refresh();
+
+    expect(container.read(ordersProvider).value!.single.status, OrderStatus.ready);
   });
 }

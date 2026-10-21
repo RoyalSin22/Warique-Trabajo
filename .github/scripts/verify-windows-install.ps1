@@ -95,6 +95,11 @@ Check 'ACL: logs writable by the service' {
         $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value -eq 'S-1-5-19' }
     "$($rule.FileSystemRights)" -match 'Modify'
 }
+Check 'ACL: the installer package folder is closed to Users (its migrations run as root)' {
+    $sids = @(Sids "$env:ProgramData\WariqueInstalador")
+    Write-Host "      $($sids -join ' ')"
+    -not ($sids -contains 'S-1-5-32-545') -and ($sids -contains 'S-1-5-32-544')
+}
 Check 'backup task runs as SYSTEM at 19:30' {
     $task = Get-ScheduledTask -TaskName 'Warique - Respaldo diario'
     $task.Principal.UserId -eq 'SYSTEM' -and ([datetime]$task.Triggers[0].StartBoundary).ToString('HH:mm') -eq '19:30'
@@ -168,6 +173,48 @@ Check 'owner voids a payment (migration 002): the order owes again and totals sk
     Write-Host "      order $($order.paymentStatus), collected $($daily.collectedTotal), second void: $again"
     $order.paymentStatus -eq 'UNPAID' -and [decimal]$daily.collectedTotal -eq 0 -and [decimal]$daily.sales -eq 31 -and $again -eq 409
 }
+Check 'MySQL restarts by itself after a crash (service recovery actions)' {
+    $config = Get-Content "$InstallDir\config\deploy.json" -Raw | ConvertFrom-Json
+    $failure = (& sc.exe qfailure $config.mysqlService) -join ' '
+    Write-Host "      $($failure -replace '\s+', ' ')"
+    $failure -match 'RESTART'
+}
+Check 'order edits (migration 003): add a dish, remove one; kitchen and waiter limits' {
+    # The cash count check above closed today: a closed day's orders cannot be edited (409), so
+    # check that first and then reopen the drawer as the owner would
+    $closedOrder = Api POST '/orders' @{ orderType = 'TAKEAWAY'; items = @(@{ dishId = (Api GET '/dishes' $null $auth)[0].id; quantity = 1 }) } $auth
+    $editClosed = try { Api POST "/orders/$($closedOrder.id)/items" @{ items = @(@{ dishId = $closedOrder.items[0].dishId; quantity = 1 }) } $auth | Out-Null; 'accepted' }
+                  catch { [int]$_.Exception.Response.StatusCode }
+    Api POST '/cash/reopen' @{} $auth | Out-Null
+    if ($editClosed -ne 409) { throw "edit on a closed cash day answered $editClosed" }
+    $rosa = Api POST '/auth/login' @{ username = 'rosa'; password = 'Rosa-pass-123' }
+    $r = @{ Authorization = "Bearer $($rosa.accessToken)" }
+    $dish = (Api GET '/dishes' $null $auth)[0]
+    $table = (Api GET '/tables' $null $auth)[0]
+    $order = Api POST '/orders' @{ orderType = 'DINE_IN'; tableId = $table.id; items = @(@{ dishId = $dish.id; quantity = 2 }) } ($r + @{ 'Idempotency-Key' = 'ci-edit-0001' })
+    $added = Api POST "/orders/$($order.id)/items" @{ items = @(@{ dishId = $dish.id; quantity = 1 }) } ($r + @{ 'Idempotency-Key' = 'ci-edit-0002' })
+    $newLine = @($added.items | Where-Object { $_.addedAt })[0]
+    $removed = Api PATCH "/orders/$($order.id)/items/$($newLine.id)/cancel" @{ reason = 'ya no quiere' } $r
+    Api PATCH "/orders/$($order.id)/status" @{ status = 'IN_PREPARATION' } $auth | Out-Null
+    $firstLine = @($removed.items | Where-Object { -not $_.addedAt })[0]
+    $waiterAfterStart = try { Api PATCH "/orders/$($order.id)/items/$($firstLine.id)/cancel" @{ reason = 'se acabo'; quantity = 1 } $r | Out-Null; 'accepted' }
+                        catch { [int]$_.Exception.Response.StatusCode }
+    $owner = Api PATCH "/orders/$($order.id)/items/$($firstLine.id)/cancel" @{ reason = 'se acabo'; quantity = 1 } $auth
+    Write-Host "      totals: $($order.total) -> $($added.total) -> $($removed.total) -> $($owner.total); waiter after start: $waiterAfterStart"
+    [decimal]$added.total -eq 3 * [decimal]$dish.price -and [decimal]$removed.total -eq 2 * [decimal]$dish.price -and
+        $waiterAfterStart -eq 403 -and [decimal]$owner.total -eq [decimal]$dish.price
+}
+# (no extra logins here: the API allows 5 per minute and per address)
+Check 'resetting a password ends that person''s open sessions' {
+    $rosa = Api POST '/auth/login' @{ username = 'rosa'; password = 'Rosa-pass-123' }
+    $user = (Api GET '/users' $null $auth) | Where-Object username -eq 'rosa'
+    Api PATCH "/users/$($user.id)/password" @{ password = 'Rosa-pass-456' } $auth | Out-Null
+    $old = try { Api GET '/auth/me' $null @{ Authorization = "Bearer $($rosa.accessToken)" } | Out-Null; 'accepted' }
+           catch { [int]$_.Exception.Response.StatusCode }
+    Api PATCH "/users/$($user.id)/password" @{ password = 'Rosa-pass-123' } $auth | Out-Null
+    Write-Host "      old token after reset: $old"
+    $old -eq 401
+}
 Check 'status.ps1 warns while Google Drive for desktop is closed' {
     $output = & powershell -NoProfile -ExecutionPolicy Bypass -File "$InstallDir\scripts\status.ps1" 2>&1 | Out-String
     $LASTEXITCODE -eq 1 -and $output -match 'Google Drive para escritorio NO esta abierto'
@@ -194,6 +241,17 @@ Check 'service restarts by itself after the Node process dies' {
 Check 'service survives a full stop/start (as after a reboot)' {
     Stop-Service warique; Start-Service warique; Wait-Healthy | Out-Null; $true
 }
+Check 'a retried order is not duplicated even across a restart (migration 004)' {
+    $rosa = Api POST '/auth/login' @{ username = 'rosa'; password = 'Rosa-pass-123' }
+    $headers = @{ Authorization = "Bearer $($rosa.accessToken)"; 'Idempotency-Key' = 'ci-restart-0001' }
+    $dish = (Api GET '/dishes' $null $auth)[0]
+    $order = @{ orderType = 'TAKEAWAY'; customerName = 'Reintento'; items = @(@{ dishId = $dish.id; quantity = 1 }) }
+    $first = Api POST '/orders' $order $headers
+    Restart-Service warique; Wait-Healthy | Out-Null   # the in-memory copy of the key is gone
+    $retry = Api POST '/orders' $order $headers
+    Write-Host "      first $($first.id), retry after restart $($retry.id)"
+    $first.id -eq $retry.id
+}
 
 # ------------------------------------------------------------------ Backup / restore
 Check 'restore.ps1 brings back the data of a backup' {
@@ -201,12 +259,17 @@ Check 'restore.ps1 brings back the data of a backup' {
     if ($LASTEXITCODE -ne 0) { throw "backup exit $LASTEXITCODE" }
     $zip = Get-ChildItem "$InstallDir\backups" -Filter '*-manual.zip' | Sort-Object LastWriteTime | Select-Object -Last 1
     Api POST '/categories' @{ name = 'Creada despues del respaldo' } $auth | Out-Null
+    # A table that is not in the backup must not survive the restore (the database is recreated)
+    $config = Get-Content "$InstallDir\config\deploy.json" -Raw | ConvertFrom-Json
+    & "$($config.mysqlBinDir)\mysql.exe" -uroot "--password=$env:WARIQUE_MYSQL_ADMIN_PASSWORD" "--execute=CREATE TABLE $($config.database).ci_stray (id INT)"
     & powershell -NoProfile -ExecutionPolicy Bypass -File "$InstallDir\scripts\restore.ps1" -BackupFile $zip.FullName -Force
     if ($LASTEXITCODE -ne 0) { throw "restore exit $LASTEXITCODE" }
     $owner2 = Api POST '/auth/login' @{ username = 'duenio'; password = $OwnerPassword }
     $names = (Api GET '/categories?includeInactive=true' $null @{ Authorization = "Bearer $($owner2.accessToken)" }).name
-    Write-Host "      categories after restore: $($names -join ', ')"
-    ($names -contains 'Fondos') -and -not ($names -contains 'Creada despues del respaldo')
+    $stray = & "$($config.mysqlBinDir)\mysql.exe" -uroot "--password=$env:WARIQUE_MYSQL_ADMIN_PASSWORD" --batch --skip-column-names `
+        "--execute=SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$($config.database)' AND table_name = 'ci_stray'"
+    Write-Host "      categories after restore: $($names -join ', '); stray table left: $stray"
+    ($names -contains 'Fondos') -and -not ($names -contains 'Creada despues del respaldo') -and $stray -eq '0'
 }
 Check 'safety backup before restore did not turn the owner card red' {
     $status = Get-Content "$InstallDir\logs\ultimo-respaldo.json" -Raw | ConvertFrom-Json

@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/misc.dart' show Override;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:warique_app/core/alerts.dart';
 import 'package:warique_app/core/api_client.dart';
 import 'package:warique_app/models/user.dart';
@@ -8,6 +9,15 @@ import 'package:warique_app/state/session.dart';
 import 'fixtures.dart';
 
 const testServer = 'http://server.test';
+
+/// Set by test/flutter_test_config.dart; emptied for every test by [testPreferencesOverride].
+late SharedPreferences testPrefs;
+
+/// Device storage for one test, starting empty (no draft left over from a previous test).
+Override testPreferencesOverride() {
+  testPrefs.clear();
+  return sharedPreferencesProvider.overrideWithValue(testPrefs);
+}
 
 Session testSession(Role role, {int userId = 1}) => Session(
   serverUrl: testServer,
@@ -44,6 +54,7 @@ List<Override> sessionOverrides({
   int userId = 1,
 }) => [
   currentSessionProvider.overrideWithValue(testSession(role, userId: userId)),
+  testPreferencesOverride(),
   alertsProvider.overrideWithValue(alerts ?? FakeAlerts()),
   apiClientProvider.overrideWithValue(
     ApiClient(baseUrl: testServer, token: 'token', httpClient: http.client),

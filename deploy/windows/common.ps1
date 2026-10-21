@@ -184,6 +184,13 @@ function Save-DeployConfig([string]$InstallDir, $Config) {
     Write-Utf8File (Get-DeployConfigPath $InstallDir) ($Config | ConvertTo-Json -Depth 5)
 }
 
+# MySQL stops (crash, disk briefly full): Windows starts it again by itself, like the Warique
+# service. Idempotent; run by install.ps1 and update.ps1.
+function Set-MySqlServiceRecovery([string]$ServiceName) {
+    $result = Invoke-Native 'sc.exe' @('failure', $ServiceName, 'reset=', '3600', 'actions=', 'restart/10000/restart/30000/restart/60000')
+    if ($result.ExitCode -ne 0) { throw "sc.exe failure $ServiceName fallo: $($result.StdOut.Trim()) $($result.StdErr.Trim())" }
+}
+
 # Returns the /api/health object, or $null if the server does not answer in time
 function Wait-Health([int]$Port, [int]$TimeoutSeconds = 60) {
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)

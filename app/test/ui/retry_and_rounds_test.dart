@@ -46,6 +46,7 @@ void main() {
       ProviderScope(
         overrides: [
           currentSessionProvider.overrideWithValue(testSession(Role.waiter)),
+          testPreferencesOverride(),
           apiClientProvider.overrideWithValue(
             ApiClient(baseUrl: testServer, token: 'token', httpClient: MockClient(handler)),
           ),
@@ -103,7 +104,8 @@ void main() {
     Map<String, dynamic>? posted;
     await pumpWith(tester, const OrderDetailPage(orderId: 1), (request) async {
       if (request.url.path == '/api/orders/1') {
-        return _json(200, orderJson(id: 1, status: 'IN_PREPARATION', payments: []));
+        // Already out of the kitchen: more dishes go in a new order for the same table
+        return _json(200, orderJson(id: 1, status: 'READY', payments: []));
       }
       if (request.url.path == '/api/orders' && request.method == 'GET') return _json(200, [orderJson(id: 1)]);
       if (request.method == 'POST') {
@@ -127,6 +129,141 @@ void main() {
     expect(posted, containsPair('tableId', 3));
     expect(find.text('Pedido #2 enviado a cocina'), findsOneWidget);
     expect(find.text('Pedido #1'), findsOneWidget); // back on the original order
+  });
+
+  testWidgets('while the kitchen has it, "Agregar platos" adds to the same order', (tester) async {
+    Map<String, dynamic>? posted;
+    String? postedPath;
+    await pumpWith(tester, const OrderDetailPage(orderId: 1), (request) async {
+      if (request.url.path == '/api/orders/1') {
+        return _json(200, orderJson(id: 1, status: 'IN_PREPARATION', payments: []));
+      }
+      if (request.url.path == '/api/orders' && request.method == 'GET') return _json(200, [orderJson(id: 1)]);
+      if (request.method == 'POST') {
+        postedPath = request.url.path;
+        posted = jsonDecode(request.body) as Map<String, dynamic>;
+        return _json(
+          201,
+          orderJson(id: 1, status: 'IN_PREPARATION', total: '58.5', updatedAt: '2026-10-03T15:10:00.000Z'),
+        );
+      }
+      return menuAndTables(request);
+    });
+
+    expect(find.byTooltip('Otro pedido para esta mesa'), findsNothing);
+    await tester.tap(find.byTooltip('Agregar platos a este pedido'));
+    await tester.pumpAndSettle();
+    expect(find.text('Agregar al pedido #1'), findsOneWidget);
+    expect(find.byType(ChoiceChip), findsNothing, reason: 'no table to choose');
+
+    await tester.tap(find.text('Ceviche'));
+    await tester.pump();
+    await tester.tap(find.text('Revisar y enviar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Enviar a cocina'));
+    await tester.pumpAndSettle();
+
+    expect(postedPath, '/api/orders/1/items');
+    expect(posted!['items'], hasLength(1));
+    expect(find.textContaining('Platos agregados al pedido #1'), findsOneWidget);
+  });
+
+  testWidgets('asks before throwing away a cart on back', (tester) async {
+    await pumpWith(
+      tester,
+      Builder(
+        builder: (context) => TextButton(
+          onPressed: () =>
+              Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const NewOrderPage())),
+          child: const Text('abrir'),
+        ),
+      ),
+      menuAndTables,
+    );
+    await tester.tap(find.text('abrir'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ceviche'));
+    await tester.pump();
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('¿Descartar pedido?'), findsOneWidget);
+    await tester.tap(find.text('Seguir aquí'));
+    await tester.pumpAndSettle();
+    expect(find.text('Revisar y enviar'), findsOneWidget, reason: 'still on the order, cart kept');
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Descartar'));
+    await tester.pumpAndSettle();
+    expect(find.text('abrir'), findsOneWidget);
+  });
+
+  testWidgets('an order being built survives the screen closing (expired session, closed tab)', (
+    tester,
+  ) async {
+    await pumpWith(tester, const NewOrderPage(), menuAndTables);
+    await tester.tap(find.text('Ceviche'));
+    await tester.tap(find.text('Ceviche'));
+    await tester.pump();
+
+    // The session ended and the waiter signs in again: a fresh screen, same device storage
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentSessionProvider.overrideWithValue(testSession(Role.waiter)),
+          sharedPreferencesProvider.overrideWithValue(testPrefs),
+          apiClientProvider.overrideWithValue(
+            ApiClient(baseUrl: testServer, token: 'token', httpClient: MockClient(menuAndTables)),
+          ),
+          realtimeClientProvider.overrideWithValue(FakeRealtime()),
+          realtimeConnectedProvider.overrideWith((ref) => Stream.value(true)),
+        ],
+        child: const MaterialApp(home: NewOrderPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Se recuperó el pedido que estabas armando.'), findsOneWidget);
+    expect(find.textContaining('2 platos'), findsWidgets);
+  });
+
+  testWidgets('a restored draft drops dishes no longer on the menu; an old draft is ignored', (tester) async {
+    Future<void> openWith(Map<String, Object?> draft) async {
+      await tester.pumpWidget(const SizedBox());
+      await pumpWith(tester, const SizedBox(), menuAndTables); // fresh storage
+      await testPrefs.setString('orderDraft:1', jsonEncode(draft));
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            currentSessionProvider.overrideWithValue(testSession(Role.waiter)),
+            sharedPreferencesProvider.overrideWithValue(testPrefs),
+            apiClientProvider.overrideWithValue(
+              ApiClient(baseUrl: testServer, token: 'token', httpClient: MockClient(menuAndTables)),
+            ),
+            realtimeClientProvider.overrideWithValue(FakeRealtime()),
+            realtimeConnectedProvider.overrideWith((ref) => Stream.value(true)),
+          ],
+          child: const MaterialApp(home: NewOrderPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    final lines = [
+      {'dishId': 5, 'quantity': 1, 'note': null},
+      {'dishId': 999, 'quantity': 2, 'note': null}, // deactivated since
+    ];
+    await openWith({'lines': lines, 'type': 'DINE_IN', 'savedAt': DateTime.now().toIso8601String()});
+    expect(find.textContaining('ya no están en la carta'), findsOneWidget);
+    expect(find.textContaining('1 plato'), findsWidgets);
+
+    final old = DateTime.now().subtract(const Duration(hours: 13)).toIso8601String();
+    await openWith({'lines': lines, 'type': 'DINE_IN', 'savedAt': old});
+    expect(find.textContaining('Se recuperó'), findsNothing);
+    expect(testPrefs.getString('orderDraft:1'), isNull);
   });
 
   testWidgets('connect devices shows the server address as a QR code', (tester) async {

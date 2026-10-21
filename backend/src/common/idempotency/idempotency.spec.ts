@@ -22,6 +22,27 @@ describe('IdempotencyStore', () => {
     await expect(store.run('k', () => Promise.resolve('ok'))).resolves.toBe('ok');
   });
 
+  it('recognises a retry after a restart through the database', async () => {
+    const rows = new Map<string, { response: string; createdAt: Date }>();
+    const prisma = {
+      idempotencyKey: {
+        findFirst: jest.fn(async ({ where }: { where: { keyHash: string } }) => rows.get(where.keyHash) ?? null),
+        upsert: jest.fn(async ({ create }: { create: { keyHash: string; response: string } }) => {
+          rows.set(create.keyHash, { response: create.response, createdAt: new Date() });
+        }),
+      },
+    };
+    let calls = 0;
+    const action = async () => ({ id: ++calls });
+
+    const before = new IdempotencyStore(prisma as never);
+    await before.run('k', action);
+    const afterRestart = new IdempotencyStore(prisma as never); // empty memory, same database
+
+    await expect(afterRestart.run('k', action)).resolves.toEqual({ id: 1 });
+    expect(calls).toBe(1);
+  });
+
   it('expires keys after the TTL', async () => {
     const store = new IdempotencyStore();
     await store.run('k', () => Promise.resolve(1), 0);

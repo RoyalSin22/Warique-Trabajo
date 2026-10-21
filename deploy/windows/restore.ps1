@@ -3,10 +3,12 @@
   Restaura la base de datos de Warique desde un respaldo .zip creado por backup.ps1.
 .DESCRIPTION
   REEMPLAZA todos los datos actuales. Antes de restaurar crea un respaldo de seguridad
-  ("antes-de-restaurar"), detiene el servicio, restaura y vuelve a iniciarlo.
+  ("antes-de-restaurar"), detiene el servicio, borra la base y la carga desde el respaldo (nada del
+  estado actual se mezcla con el restaurado), aplica los cambios de esquema que el respaldo no
+  tenia (si es de una version anterior) y vuelve a iniciar el servicio.
   Pide la clave del usuario administrador de MySQL (root), que no se guarda en ningun archivo.
 .EXAMPLE
-  .\restore.ps1 -BackupFile 'C:\Warique\backups\warique-20261003-233000-diario.zip'
+  .\restore.ps1 -BackupFile 'C:\Warique\backups\warique-20261003-193000-diario.zip'
 #>
 [CmdletBinding()]
 param(
@@ -64,8 +66,26 @@ try {
     }
 
     Write-Step 'Restaurando (puede tardar unos minutos)'
-    Invoke-MySqlFile $config.mysqlBinDir $adminOptionFile $sqlFile
+    $safetyCopy = Get-ChildItem -LiteralPath $config.backupDir -Filter '*-antes-de-restaurar.zip' -File |
+        Sort-Object LastWriteTime | Select-Object -Last 1
+    # Empty database first: tables or rows that are not in the backup must not survive. The app
+    # and backup accounts keep their grants (MySQL stores them apart from the database).
+    Invoke-MySqlQuery $config.mysqlBinDir $adminOptionFile "DROP DATABASE IF EXISTS ``$($config.database)``" | Out-Null
+    try {
+        Invoke-MySqlFile $config.mysqlBinDir $adminOptionFile $sqlFile
+    } catch {
+        throw ("La carga fallo y la base quedo incompleta: $($_.Exception.Message)`n" +
+            "Vuelve al estado anterior restaurando $($safetyCopy.FullName)")
+    }
     Write-Ok 'Base de datos restaurada'
+
+    # A backup from an older version lacks later schema changes: apply them now
+    $pending = @(Get-PendingMigrations $config.mysqlBinDir $adminOptionFile $config.database (Get-InstalledMigrationsDir $InstallDir))
+    if ($pending.Count -gt 0) {
+        Invoke-Migrations $config.mysqlBinDir $adminOptionFile $config.database $pending
+    } else {
+        Write-Ok 'Esquema al dia'
+    }
 } finally {
     Remove-Item -LiteralPath $adminOptionFile -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $workDir -Recurse -Force -ErrorAction SilentlyContinue

@@ -17,6 +17,7 @@ Map<String, dynamic> orderJson({
   List<Map<String, dynamic>>? payments,
   String? cancelReason,
   int waiterId = 2,
+  List<Map<String, dynamic>>? items,
 }) => {
   'id': id,
   'orderType': orderType,
@@ -33,28 +34,31 @@ Map<String, dynamic> orderJson({
   'paidAt': null,
   'table': orderType == 'DINE_IN' ? {'id': 3, 'label': 'Mesa 3'} : null,
   'waiter': {'id': waiterId, 'fullName': 'Rosa Mozo'},
-  'items': <Map<String, dynamic>>[
-    {
-      'id': 10,
-      'dishId': 5,
-      'dishName': 'Ceviche',
-      'unitPrice': '18.5',
-      'quantity': 2,
-      'subtotal': '37',
-      'notes': 'sin ají',
-    },
-    {
-      'id': 11,
-      'dishId': 6,
-      'dishName': 'Chicha morada',
-      'unitPrice': '3',
-      'quantity': 1,
-      'subtotal': '3',
-      'notes': null,
-    },
-  ],
+  'items': items ?? defaultOrderItems(),
   'payments': ?payments,
 };
+
+/// Ceviche ×2 (sin ají) and Chicha morada ×1, as the API returns them.
+List<Map<String, dynamic>> defaultOrderItems() => <Map<String, dynamic>>[
+  {
+    'id': 10,
+    'dishId': 5,
+    'dishName': 'Ceviche',
+    'unitPrice': '18.5',
+    'quantity': 2,
+    'subtotal': '37',
+    'notes': 'sin ají',
+  },
+  {
+    'id': 11,
+    'dishId': 6,
+    'dishName': 'Chicha morada',
+    'unitPrice': '3',
+    'quantity': 1,
+    'subtotal': '3',
+    'notes': null,
+  },
+];
 
 Map<String, dynamic> dishJson({
   int id = 5,

@@ -31,3 +31,8 @@ export function businessDayRange(
   const start = new Date(localMidnightAsUtc - offsetMs);
   return { date: day, start, end: new Date(start.getTime() + DAY_MS) };
 }
+
+/** Business day (YYYY-MM-DD, local) that a stored UTC timestamp belongs to. */
+export function businessDateOf(instant: Date, utcOffsetMinutes: number): string {
+  return new Date(instant.getTime() + utcOffsetMinutes * 60 * 1000).toISOString().slice(0, 10);
+}

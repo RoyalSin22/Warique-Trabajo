@@ -15,7 +15,13 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthenticatedUser } from '../auth/interfaces/authenticated-user.interface';
 import { IdempotencyInterceptor } from '../common/idempotency/idempotency.interceptor';
-import { CreateOrderDto, ListOrdersQueryDto, UpdateOrderStatusDto } from './dto/order.dto';
+import {
+  AddOrderItemsDto,
+  CancelOrderItemDto,
+  CreateOrderDto,
+  ListOrdersQueryDto,
+  UpdateOrderStatusDto,
+} from './dto/order.dto';
 import { CreatePaymentDto, VoidPaymentDto } from './dto/payment.dto';
 import { OrdersService } from './orders.service';
 import { PaymentsService } from './payments.service';
@@ -33,8 +39,12 @@ export class OrdersController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.ordersService.findOne(id);
+  async findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: AuthenticatedUser) {
+    const order = await this.ordersService.findOne(id);
+    if (user.role !== Role.KITCHEN) return order;
+    // The kitchen cooks; payment details are not its business (same as the realtime feed)
+    const { payments: _payments, ...forKitchen } = order;
+    return forKitchen;
   }
 
   @Roles(Role.WAITER, Role.OWNER)
@@ -42,6 +52,27 @@ export class OrdersController {
   @Post()
   create(@Body() dto: CreateOrderDto, @CurrentUser() user: AuthenticatedUser) {
     return this.ordersService.create(dto, user);
+  }
+
+  /** More dishes for an order the kitchen has not finished (PENDING or IN_PREPARATION). */
+  @Roles(Role.WAITER, Role.OWNER)
+  @UseInterceptors(IdempotencyInterceptor)
+  @Post(':id/items')
+  addItems(@Param('id', ParseIntPipe) id: number, @Body() dto: AddOrderItemsDto) {
+    return this.ordersService.addItems(id, dto);
+  }
+
+  /** PENDING: waiter or owner. Once the kitchen started: owner only (checked in the service). */
+  @Roles(Role.WAITER, Role.OWNER)
+  @UseInterceptors(IdempotencyInterceptor) // a retried "quitar 1 de 3" never removes two
+  @Patch(':id/items/:itemId/cancel')
+  cancelItem(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body() dto: CancelOrderItemDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.ordersService.cancelItem(id, itemId, dto, user);
   }
 
   /** Role rules per transition live in order-status.ts */

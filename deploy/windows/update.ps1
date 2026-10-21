@@ -47,6 +47,15 @@ function Stop-ForSwap {
     Set-Service -Name $config.serviceName -StartupType Automatic
 }
 
+# The antivirus may hold files of a freshly copied node_modules for a few seconds
+function Rename-WithRetry([string]$Path, [string]$NewName) {
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        try { Rename-Item -LiteralPath $Path -NewName $NewName -ErrorAction Stop; return $true }
+        catch { Start-Sleep -Seconds 3 }
+    }
+    return $false
+}
+
 function Copy-Tree([string]$From, [string]$To) {
     $process = Start-Process robocopy.exe -ArgumentList (ConvertTo-ArgumentString @(
             $From, $To, '/MIR', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')) -NoNewWindow -Wait -PassThru
@@ -86,9 +95,23 @@ if ($pending.Count -eq 0) {
 Set-EnvFileValue (Join-Path $InstallDir 'config\.env') 'BACKUP_STATUS_FILE' (Join-Path $config.logDir 'ultimo-respaldo.json')
 
 Write-Step 'Reemplazando la aplicacion'
-Stop-Service -Name $config.serviceName
-if (Test-Path -LiteralPath $previousDir) { Remove-Item -LiteralPath $previousDir -Recurse -Force }
-Rename-Item -LiteralPath $appDir -NewName 'app.previous'
+try {
+    Stop-Service -Name $config.serviceName -ErrorAction Stop
+} catch {
+    Write-Warn "El servicio no se detuvo a tiempo ($($_.Exception.Message)); se fuerza"
+    Stop-ForSwap
+}
+try {
+    if (Test-Path -LiteralPath $previousDir) { Remove-Item -LiteralPath $previousDir -Recurse -Force }
+    Rename-Item -LiteralPath $appDir -NewName 'app.previous'
+} catch {
+    # A file locked by the antivirus or an open Explorer window: the restaurant keeps the current version
+    if (-not (Test-Path -LiteralPath $appDir) -and (Test-Path -LiteralPath $previousDir)) {
+        Rename-Item -LiteralPath $previousDir -NewName 'app'
+    }
+    Start-Service -Name $config.serviceName
+    throw "No se pudo apartar la version actual (algun archivo en uso: cierra el Explorador y reintenta): $($_.Exception.Message)"
+}
 try {
     Copy-Tree (Join-Path $ReleaseDir 'app') $appDir
 } catch {
@@ -104,15 +127,27 @@ if (-not $health) {
     Write-Warn 'La nueva version no respondio. Volviendo a la anterior...'
     Stop-ForSwap
     $failedDir = Join-Path $InstallDir ('app.fallida-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
-    Rename-Item -LiteralPath $appDir -NewName (Split-Path $failedDir -Leaf)
-    Rename-Item -LiteralPath $previousDir -NewName 'app'
+    if ((Rename-WithRetry $appDir (Split-Path $failedDir -Leaf)) -and (Rename-WithRetry $previousDir 'app')) {
+        Write-Ok 'Version anterior restituida'
+    } else {
+        # A file still locked: copy the previous version over the failed one instead of renaming
+        Write-Warn 'No se pudo renombrar (archivo en uso); copiando la version anterior encima'
+        Copy-Tree $previousDir $appDir
+    }
     if (Start-AndCheck) { throw "Actualizacion revertida: sigue funcionando $($config.version). Revisa logs\warique.err.log." }
     throw 'La version anterior tampoco responde. Revisa logs\warique.err.log y el servicio de MySQL.'
 }
 
-# Scripts and service wrapper are updated only after the new app is confirmed healthy
+# Scripts are updated only after the new app is confirmed healthy (the service wrapper
+# warique.exe/warique.xml is written by install.ps1 only; updates do not change it)
 Copy-Item -Path (Join-Path $PSScriptRoot '*.ps1') -Destination (Join-Path $InstallDir 'scripts') -Force
 Copy-Migrations $ReleaseDir $InstallDir
+
+# 0.4.0: MySQL restarts by itself after a crash (installs before 0.4.0 did not set it)
+if ($config.mysqlService -and (Get-Service -Name $config.mysqlService -ErrorAction SilentlyContinue)) {
+    Set-MySqlServiceRecovery $config.mysqlService
+    Write-Ok "MySQL ($($config.mysqlService)) se reinicia solo si falla"
+}
 
 # 0.3.0: the nightly backup moved from 18:30 to 19:30 (after the cash count, done by 19:00).
 # Only the old default is moved; a time the owner chose with -BackupTime is kept.

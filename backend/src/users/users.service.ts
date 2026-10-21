@@ -50,17 +50,23 @@ export class UsersService {
     return this.prisma.user
       .update({ where: { id }, data: dto, select: USER_PUBLIC_SELECT })
       .then((user) => {
-        // HTTP requests are already refused (the guard re-reads the user); close the live feed too
-        if (dto.isActive === false) this.realtime.disconnectUser(id);
+        // HTTP requests are already refused (the guard re-reads the user); close the live feed too.
+        // A role change also reconnects, so the socket joins the right role room.
+        if (dto.isActive === false || dto.role !== undefined) this.realtime.disconnectUser(id);
         return user;
       });
   }
 
-  async resetPassword(id: number, password: string) {
-    return this.prisma.user.update({
+  /** Every open session of that user ends at once (e.g. a stolen phone). */
+  async resetPassword(id: number, password: string, actor?: AuthenticatedUser) {
+    // Resetting your own would end this very session with no new token: use "Cambiar mi contraseña"
+    if (actor && id === actor.id) throw new BadRequestException('Use your own password change instead');
+    const user = await this.prisma.user.update({
       where: { id },
-      data: { passwordHash: await hashPassword(password) },
+      data: { passwordHash: await hashPassword(password), tokenVersion: { increment: 1 } },
       select: USER_PUBLIC_SELECT,
     });
+    this.realtime.disconnectUser(id);
+    return user;
   }
 }

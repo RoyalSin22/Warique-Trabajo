@@ -6,6 +6,7 @@ import { fromDateColumn, toDateColumn } from '../common/utils/date-column';
 import { businessDayRange } from '../common/utils/business-day';
 import { fromCents, toCents } from '../common/utils/money';
 import { PrismaService } from '../prisma/prisma.service';
+import { ACTIVE_ITEM } from '../orders/active-item';
 import { ACTIVE_PAYMENT } from '../orders/active-payment';
 import { buildSummary, dayRange } from './summary';
 
@@ -49,7 +50,7 @@ export class ReportsService {
       }),
       this.prisma.orderItem.groupBy({
         by: ['dishId', 'dishName'],
-        where: { order: validOrdersThatDay },
+        where: { order: validOrdersThatDay, ...ACTIVE_ITEM },
         _sum: { quantity: true },
         orderBy: { _sum: { quantity: 'desc' } },
         take: 10,
@@ -154,7 +155,7 @@ export class ReportsService {
       this.prisma.order.findMany({ where: validOrders, select: { createdAt: true, total: true } }),
       this.prisma.orderItem.groupBy({
         by: ['dishId', 'dishName'],
-        where: { order: validOrders },
+        where: { order: validOrders, ...ACTIVE_ITEM },
         _sum: { quantity: true, subtotal: true },
         orderBy: { _sum: { quantity: 'desc' } },
         take: 10,

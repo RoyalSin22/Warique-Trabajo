@@ -12,6 +12,7 @@ describe('ExpensesService', () => {
     expense: { create: jest.fn(), findUniqueOrThrow: jest.fn(), update: jest.fn() },
     supplyMovement: { create: jest.fn() },
     supply: { update: jest.fn(({ where, data }) => ({ id: where.id, stock: data.stock })) },
+    cashSession: { findUnique: jest.fn().mockResolvedValue(null) },
   };
   const expenseRow = {
     id: 10,
@@ -22,6 +23,7 @@ describe('ExpensesService', () => {
   const prisma = {
     $transaction: jest.fn((callback: (client: typeof tx) => unknown) => callback(tx)),
     expense: { findUnique: jest.fn().mockResolvedValue(expenseRow), findMany: jest.fn() },
+    cashSession: tx.cashSession,
   };
   const realtime = { supplyUpdated: jest.fn() };
   const service = new ExpensesService(
@@ -65,6 +67,14 @@ describe('ExpensesService', () => {
     });
     expect(realtime.supplyUpdated).toHaveBeenCalledTimes(2);
     expect(result.businessDate).toBe('2026-10-02');
+  });
+
+  it('refuses a cash expense on a day whose cash count is closed (paid by other means: fine)', async () => {
+    tx.$queryRaw.mockResolvedValueOnce([{ closed_at: new Date() }]); // the guard, inside the transaction
+    await expect(
+      service.create({ ...purchase, items: undefined, category: ExpenseCategory.OTROS, amount: 10 }, owner),
+    ).rejects.toThrow('reopen it');
+    expect(tx.expense.create).not.toHaveBeenCalled();
   });
 
   it('validates purchases before touching the database', async () => {

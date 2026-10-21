@@ -33,7 +33,11 @@ export class UsersController {
   }
 
   @Patch(':id/password')
-  resetPassword(@Param('id', ParseIntPipe) id: number, @Body() dto: ResetPasswordDto) {
-    return this.usersService.resetPassword(id, dto.password);
+  resetPassword(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ResetPasswordDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ) {
+    return this.usersService.resetPassword(id, dto.password, actor);
   }
 }

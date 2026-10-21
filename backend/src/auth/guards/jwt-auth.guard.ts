@@ -38,9 +38,11 @@ export class JwtAuthGuard implements CanActivate {
     // PK lookup: deactivating a user or changing their role takes effect immediately
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, username: true, fullName: true, role: true, isActive: true },
+      select: { id: true, username: true, fullName: true, role: true, isActive: true, tokenVersion: true },
     });
     if (!user || !user.isActive) throw new UnauthorizedException('User is not active');
+    // The password changed after this token was issued (lost phone, reset by the owner)
+    if ((payload.tv ?? 0) !== user.tokenVersion) throw new UnauthorizedException('Session expired');
 
     request.user = { id: user.id, username: user.username, fullName: user.fullName, role: user.role };
     return true;

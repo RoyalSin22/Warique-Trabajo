@@ -38,6 +38,29 @@ const _knownMessages = <String, String>{
   'Cannot cancel an order that already has payments':
       'No se puede cancelar un pedido que ya tiene pagos. El dueño puede anular los cobros primero.',
   'The payment is already void': 'El cobro ya estaba anulado.',
+  'The cash count for this day is closed: reopen it to register cash movements':
+      'La caja de este día ya está cerrada. El dueño debe reabrirla en Cierre para registrar efectivo.',
+  'The cash count for this day is not closed': 'La caja de este día no está cerrada.',
+  'Items can only be added while the kitchen has the order':
+      'Este pedido ya salió de cocina: usa "Otro pedido para esta mesa".',
+  'Only the owner can remove items the kitchen already started':
+      'La cocina ya empezó este pedido: solo el dueño puede quitar platos.',
+  'Item not found': 'El plato ya no está en el pedido.',
+  'The item is already removed': 'Ese plato ya se había quitado.',
+  'The order is cancelled': 'El pedido está cancelado.',
+  'Cannot remove more units than ordered': 'No se pueden quitar más unidades de las pedidas.',
+  'Cannot remove the last item: cancel the order instead': 'Es el único plato: cancela el pedido completo.',
+  'The order would be below what was already paid: void a payment first':
+      'El total quedaría por debajo de lo ya cobrado: el dueño debe anular un cobro primero.',
+  'price must be greater than 0': 'El precio debe ser mayor que 0.',
+  'Only the waiter who took the order or the owner can cancel it':
+      'Solo el mozo que tomó el pedido o el dueño pueden cancelarlo.',
+  'Only the waiter who took the order or the owner can change it':
+      'Solo el mozo que tomó el pedido o el dueño pueden modificarlo.',
+  'Use your own password change instead': 'Para tu propia clave usa "Cambiar mi contraseña" en tu cuenta.',
+  'The record is busy, try again': 'Otra persona estaba usando este pedido en ese momento. Intenta de nuevo.',
+  'Invalid request': 'Solicitud inválida.',
+  'Session expired': 'Tu sesión ya no es válida (cambiaron tu contraseña). Vuelve a ingresar.',
   'Payment not found': 'El cobro no existe.',
   'cancelReason is required to cancel an order': 'Indica el motivo de la cancelación.',
   'The order is already paid': 'El pedido ya está pagado.',
@@ -90,6 +113,11 @@ String translateServerMessage(int statusCode, String? serverMessage) {
     if (voidStock != null) {
       return 'No se puede anular: de ${voidStock.group(1)} quedan ${_trimQuantity(voidStock.group(2)!)} '
           'de los ${_trimQuantity(voidStock.group(3)!)} comprados. Registra un conteo primero.';
+    }
+    // "Operation number already registered in order #12"
+    final reused = RegExp(r'^Operation number already registered in order #(\d+)').firstMatch(serverMessage);
+    if (reused != null) {
+      return 'Ese número de operación ya se registró en el pedido #${reused.group(1)}. Revisa la captura.';
     }
     if (serverMessage.startsWith('username must be')) {
       return 'Usuario inválido: 3 a 50 caracteres en minúsculas, números, ".", "_" o "-".';

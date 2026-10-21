@@ -85,6 +85,34 @@ class CashCard extends ConsumerWidget {
     if (saved == true) ref.invalidate(cashDayProvider(date));
   }
 
+  /// After closing, cash payments and expenses of the day are refused until the owner reopens it.
+  Future<void> _reopen(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reabrir caja'),
+        content: const Text(
+          'Se borra el conteo de este cierre para poder registrar cobros o gastos en efectivo '
+          'que faltaron. Después vuelve a contar y cierra la caja.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Volver')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Reabrir')),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      await ref.read(inventoryRepositoryProvider).reopenCash(date);
+      ref.invalidate(cashDayProvider(date));
+      if (context.mounted) {
+        showInfoSnack(context, 'Caja reabierta: ya se pueden registrar movimientos en efectivo.');
+      }
+    } catch (error) {
+      if (context.mounted) showErrorSnack(context, error);
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cash = ref.watch(cashDayProvider(date));
@@ -174,13 +202,28 @@ class CashCard extends ConsumerWidget {
           ),
       ],
       const SizedBox(height: 8),
+      if (closed)
+        Text(
+          'Con la caja cerrada no se aceptan cobros ni gastos en efectivo de este día.',
+          style: theme.textTheme.bodySmall,
+        ),
       Align(
         alignment: Alignment.centerLeft,
         child: closed
-            ? OutlinedButton.icon(
-                onPressed: () => _close(context, ref, day),
-                icon: const Icon(Icons.replay),
-                label: const Text('Volver a contar'),
+            ? Wrap(
+                spacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => _close(context, ref, day),
+                    icon: const Icon(Icons.replay),
+                    label: const Text('Volver a contar'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => _reopen(context, ref),
+                    icon: const Icon(Icons.lock_open),
+                    label: const Text('Reabrir caja'),
+                  ),
+                ],
               )
             : FilledButton.icon(
                 onPressed: () => _close(context, ref, day),

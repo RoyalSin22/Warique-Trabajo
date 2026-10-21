@@ -5,6 +5,8 @@ export interface JwtPayload {
   sub: number;
   username: string;
   role: Role;
+  /** users.token_version when issued; tokens from before a password change are refused. Missing = 0. */
+  tv?: number;
 }
 
 export interface AuthenticatedUser {

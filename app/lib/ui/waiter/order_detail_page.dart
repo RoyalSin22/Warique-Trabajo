@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_exception.dart';
+import '../../core/ids.dart';
 import '../../core/money.dart';
 import '../../models/order.dart';
 import '../../models/user.dart';
@@ -84,8 +85,43 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     showInfoSnack(context, 'Pedido #${created.id} enviado a cocina');
   }
 
+  /// Same order, while the kitchen still has it: the new dishes reach the kitchen marked "nuevo".
+  Future<void> _addItemsTo(Order order) async {
+    final updated = await Navigator.of(
+      context,
+    ).push<Order>(MaterialPageRoute(builder: (_) => NewOrderPage(addTo: order)));
+    if (updated == null || !mounted) return;
+    ref.read(ordersProvider.notifier).upsert(updated);
+    setState(() => _loaded = updated);
+    showInfoSnack(context, 'Platos agregados al pedido #${order.id}. Total: ${updated.total}');
+  }
+
+  Future<void> _removeItem(Order order, OrderItem item) async {
+    final result = await showDialog<({String reason, int quantity})>(
+      context: context,
+      builder: (_) => _RemoveItemDialog(item: item),
+    );
+    if (result == null) return;
+    // One key per confirmed removal: a retry after a timeout never takes out a second unit
+    final requestId = newRequestId();
+    await _run(
+      () => ref
+          .read(ordersRepositoryProvider)
+          .cancelItem(
+            order.id,
+            item.id,
+            result.reason,
+            quantity: result.quantity == item.quantity ? null : result.quantity,
+            requestId: requestId,
+          ),
+      'Se quitó ${result.quantity}× ${item.dishName}',
+      successMessageOf: (updated) =>
+          'Se quitó ${result.quantity}× ${item.dishName}. Nuevo total: ${updated.total}',
+    );
+  }
+
   Future<void> _changeStatus(Order order, OrderStatus to) => _run(
-    () => ref.read(ordersRepositoryProvider).changeStatus(order.id, to),
+    () => ref.read(ordersRepositoryProvider).changeStatus(order.id, to, expectedUpdatedAt: order.updatedAt),
     'Pedido #${order.id}: ${to.label}',
   );
 
@@ -152,7 +188,8 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
   Widget build(BuildContext context) {
     final live = ref.watch(orderByIdProvider(widget.orderId));
     final order = _pickNewest(live, _loaded);
-    final role = ref.watch(currentUserProvider).role;
+    final user = ref.watch(currentUserProvider);
+    final role = user.role;
 
     if (order == null) {
       return Scaffold(
@@ -174,8 +211,14 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
         title: Text('Pedido #${order.id}'),
         actions: [
           const ConnectionIndicator(),
-          // Orders cannot be edited once in the kitchen: a second round is a new order, same target
-          if (role != Role.kitchen && order.status != OrderStatus.cancelled)
+          // While the kitchen has it, more dishes join this order; afterwards a new order, same target
+          if (role != Role.kitchen && order.canAddItems)
+            IconButton(
+              onPressed: _busy ? null : () => _addItemsTo(order),
+              icon: const Icon(Icons.playlist_add),
+              tooltip: 'Agregar platos a este pedido',
+            )
+          else if (role != Role.kitchen && order.status != OrderStatus.cancelled)
             IconButton(
               onPressed: () => _newRoundFor(order),
               icon: const Icon(Icons.add_shopping_cart),
@@ -211,28 +254,53 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
           for (final item in order.items)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 36,
-                    child: Text('${item.quantity}×', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(item.dishName),
-                        if (item.notes != null)
-                          Text(
-                            item.notes!,
-                            style: TextStyle(color: Colors.amber.shade900, fontStyle: FontStyle.italic),
-                          ),
-                      ],
+              child: Opacity(
+                opacity: item.isCancelled ? 0.55 : 1,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 36,
+                      child: Text('${item.quantity}×', style: const TextStyle(fontWeight: FontWeight.bold)),
                     ),
-                  ),
-                  Text(item.subtotal.toString()),
-                ],
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.isAdded && !item.isCancelled ? '${item.dishName} · agregado' : item.dishName,
+                            style: item.isCancelled
+                                ? const TextStyle(decoration: TextDecoration.lineThrough)
+                                : null,
+                          ),
+                          if (item.notes != null)
+                            Text(
+                              item.notes!,
+                              style: TextStyle(color: Colors.amber.shade900, fontStyle: FontStyle.italic),
+                            ),
+                          if (item.isCancelled)
+                            Text(
+                              'QUITADO: ${item.cancelReason}',
+                              style: TextStyle(color: Theme.of(context).colorScheme.error),
+                            ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      item.subtotal.toString(),
+                      style: item.isCancelled
+                          ? const TextStyle(decoration: TextDecoration.lineThrough)
+                          : null,
+                    ),
+                    if (!item.isCancelled && order.canRemoveItems(role))
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        tooltip: 'Quitar ${item.dishName}',
+                        icon: const Icon(Icons.remove_circle_outline),
+                        onPressed: _busy ? null : () => _removeItem(order, item),
+                      ),
+                  ],
+                ),
               ),
             ),
           if (order.notes != null) ...[
@@ -295,7 +363,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
             runSpacing: 8,
             alignment: WrapAlignment.end,
             children: [
-              if (order.canCancel(role))
+              if (order.canCancel(role, userId: user.id))
                 OutlinedButton.icon(
                   onPressed: _busy ? null : () => _cancel(order),
                   icon: const Icon(Icons.cancel_outlined),
@@ -355,6 +423,77 @@ class _AmountRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Reason (and, for a line with several units, how many) to remove a dish from a sent order.
+class _RemoveItemDialog extends StatefulWidget {
+  const _RemoveItemDialog({required this.item});
+
+  final OrderItem item;
+
+  @override
+  State<_RemoveItemDialog> createState() => _RemoveItemDialogState();
+}
+
+class _RemoveItemDialogState extends State<_RemoveItemDialog> {
+  final _controller = TextEditingController();
+  late int _quantity = widget.item.quantity;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  bool get _valid => _controller.text.trim().length >= 3; // CancelOrderItemDto: MinLength(3)
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text('Quitar ${widget.item.dishName}'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (widget.item.quantity > 1)
+          Row(
+            children: [
+              const Expanded(child: Text('Cantidad a quitar')),
+              IconButton(
+                tooltip: 'Menos',
+                onPressed: _quantity > 1 ? () => setState(() => _quantity--) : null,
+                icon: const Icon(Icons.remove),
+              ),
+              Text('$_quantity de ${widget.item.quantity}', style: Theme.of(context).textTheme.titleMedium),
+              IconButton(
+                tooltip: 'Más',
+                onPressed: _quantity < widget.item.quantity ? () => setState(() => _quantity++) : null,
+                icon: const Icon(Icons.add),
+              ),
+            ],
+          ),
+        TextField(
+          controller: _controller,
+          autofocus: true,
+          maxLength: 150,
+          decoration: const InputDecoration(
+            labelText: 'Motivo',
+            hintText: 'Ej.: se acabó, el cliente ya no quiere',
+          ),
+          onChanged: (_) => setState(() {}),
+        ),
+      ],
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Volver')),
+      FilledButton(
+        onPressed: _valid
+            ? () => Navigator.pop(context, (reason: _controller.text.trim(), quantity: _quantity))
+            : null,
+        style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+        child: const Text('Quitar'),
+      ),
+    ],
+  );
 }
 
 /// Asks for the reason of a destructive action (cancel an order, void a payment).

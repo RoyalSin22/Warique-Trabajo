@@ -91,6 +91,9 @@ model User {
   movements      SupplyMovement[]
   cashOpened     CashSession[]    @relation("cashOpenedBy")
   cashClosed     CashSession[]    @relation("cashClosedBy")
+  cancelledItems OrderItem[]      @relation("orderItemCancelledBy")
+  /// Incremented when the password changes: every token issued before stops working
+  tokenVersion   Int              @default(0) @map("token_version") @db.UnsignedInt
 
   @@map("users")
 }
@@ -157,17 +160,24 @@ model Order {
 }
 
 model OrderItem {
-  id        Int      @id @default(autoincrement()) @db.UnsignedInt
-  orderId   Int      @map("order_id") @db.UnsignedInt
-  dishId    Int      @map("dish_id") @db.UnsignedInt
-  dishName  String   @map("dish_name") @db.VarChar(100)
-  unitPrice Decimal  @map("unit_price") @db.Decimal(10, 2)
-  quantity  Int      @db.UnsignedSmallInt
+  id            Int       @id @default(autoincrement()) @db.UnsignedInt
+  orderId       Int       @map("order_id") @db.UnsignedInt
+  dishId        Int       @map("dish_id") @db.UnsignedInt
+  dishName      String    @map("dish_name") @db.VarChar(100)
+  unitPrice     Decimal   @map("unit_price") @db.Decimal(10, 2)
+  quantity      Int       @db.UnsignedSmallInt
   /// Generated column in MySQL: read-only, never set it on create/update.
-  subtotal  Decimal? @db.Decimal(12, 2)
-  notes     String?  @db.VarChar(150)
-  order     Order    @relation(fields: [orderId], references: [id])
-  dish      Dish     @relation(fields: [dishId], references: [id])
+  subtotal      Decimal?  @db.Decimal(12, 2)
+  notes         String?   @db.VarChar(150)
+  /// null = sent with the order; set = added later (the kitchen highlights it)
+  addedAt       DateTime? @map("added_at") @db.DateTime(0)
+  /// Removed lines stay for the audit trail but count nowhere (total, reports, kitchen)
+  cancelledAt   DateTime? @map("cancelled_at") @db.DateTime(0)
+  cancelledBy   Int?      @map("cancelled_by") @db.UnsignedInt
+  cancelReason  String?   @map("cancel_reason") @db.VarChar(150)
+  order         Order     @relation(fields: [orderId], references: [id])
+  dish          Dish      @relation(fields: [dishId], references: [id])
+  cancelledUser User?     @relation("orderItemCancelledBy", fields: [cancelledBy], references: [id])
 
   @@map("order_items")
 }
@@ -278,4 +288,15 @@ model CashSession {
   closer         User?     @relation("cashClosedBy", fields: [closedBy], references: [id])
 
   @@map("cash_sessions")
+}
+
+/// Responses of requests sent with an Idempotency-Key (see IdempotencyStore). Never deleted:
+/// expired responses are blanked.
+model IdempotencyKey {
+  keyHash   String   @id @map("key_hash") @db.Char(64)
+  response  String?  @db.MediumText
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+
+  @@index([createdAt])
+  @@map("idempotency_keys")
 }

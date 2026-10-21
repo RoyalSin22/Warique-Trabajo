@@ -190,7 +190,8 @@ try {
     $mysql = Get-MySqlServiceInfo $MySqlService
     Set-Service -Name $MySqlService -StartupType Automatic
     if ($mysql.State -ne 'Running') { Start-Service -Name $MySqlService }
-    Write-Ok "MySQL: servicio $MySqlService (inicio automatico), binarios en $($mysql.BinDir)"
+    Set-MySqlServiceRecovery $MySqlService
+    Write-Ok "MySQL: servicio $MySqlService (inicio automatico, se reinicia solo si falla), binarios en $($mysql.BinDir)"
 
     if ($mysql.IniPath -and (Test-Path -LiteralPath $mysql.IniPath)) {
         $iniValues = @{

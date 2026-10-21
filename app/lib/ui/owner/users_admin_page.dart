@@ -244,11 +244,10 @@ Future<void> showChangeOwnPasswordDialog(BuildContext context, WidgetRef ref) as
         final [current, next, repeat] = controllers;
         return FormDialog(
           title: 'Cambiar mi contraseña',
-          onSave: () => runSaving(
-            dialogContext,
-            () => ref.read(authRepositoryProvider).changeOwnPassword(current.text, next.text),
-            success: 'Contraseña actualizada',
-          ),
+          onSave: () => runSaving(dialogContext, () async {
+            final token = await ref.read(authRepositoryProvider).changeOwnPassword(current.text, next.text);
+            await ref.read(sessionProvider.notifier).replaceToken(token);
+          }, success: 'Contraseña actualizada'),
           children: [
             TextFormField(
               controller: current,

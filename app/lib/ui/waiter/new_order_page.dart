@@ -12,9 +12,18 @@ import '../widgets/common.dart';
 import '../widgets/text_controllers.dart';
 import 'cart.dart';
 
-/// Builds a new order. Pops with the created [Order].
+/// Builds a new order, or more dishes for [addTo]. Pops with the created/updated [Order].
 class NewOrderPage extends ConsumerStatefulWidget {
-  const NewOrderPage({super.key, this.initialTableId, this.initialCustomerName, this.initialType});
+  const NewOrderPage({
+    super.key,
+    this.initialTableId,
+    this.initialCustomerName,
+    this.initialType,
+    this.addTo,
+  });
+
+  /// Adding to an order the kitchen still has: no target to choose, same order number.
+  final Order? addTo;
 
   /// Pre-selected target, e.g. "otro pedido para esta mesa" from an order's detail.
   final int? initialTableId;
@@ -30,21 +39,102 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
   late OrderType _type = widget.initialType ?? OrderType.dineIn;
   late int? _tableId = widget.initialTableId;
   late final _customerController = TextEditingController(text: widget.initialCustomerName)
-    ..addListener(_contentChanged);
-  late final _notesController = TextEditingController()..addListener(_contentChanged);
+    ..addListener(_textChanged);
+  late final _notesController = TextEditingController()..addListener(_textChanged);
   bool _submitting = false;
 
   /// Idempotency key of the order being sent. Kept across retries of the SAME order (a timeout
   /// may hide a success), discarded as soon as the waiter changes anything.
   String? _requestId;
 
-  void _contentChanged() => _requestId = null;
+  /// Controllers also notify on focus and cursor moves (tapping a field after a timeout): only a
+  /// change of the text makes it a different order.
+  String _lastTexts = '';
+
+  void _textChanged() {
+    final now = '${_customerController.text}|${_notesController.text}';
+    if (now == _lastTexts) return;
+    _lastTexts = now;
+    _contentChanged();
+  }
+
+  void _contentChanged() {
+    _requestId = null;
+    _saveDraft();
+  }
 
   /// setState for changes to the order itself.
   void _change(VoidCallback fn) => setState(() {
     fn();
     _contentChanged();
   });
+
+  /// Only an order started from "Nuevo pedido" is kept as a draft: adding to an order and "otro
+  /// pedido para esta mesa" are short and must not overwrite (or discard) that draft.
+  bool get _keepsDraft => widget.addTo == null && widget.initialTableId == null;
+
+  /// A draft older than a shift is not that order anymore.
+  static const _draftMaxAge = Duration(hours: 12);
+
+  int get _userId => ref.read(currentUserProvider).id;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!_keepsDraft) return;
+    final store = ref.read(settingsStoreProvider);
+    final draft = store.orderDraft(_userId);
+    if (draft == null) return;
+    try {
+      final savedAt = DateTime.tryParse(draft['savedAt'] as String? ?? '');
+      if (savedAt == null || DateTime.now().difference(savedAt) > _draftMaxAge) {
+        store.setOrderDraft(_userId, null);
+        return;
+      }
+      _cart.restore(draft);
+      if (_cart.isEmpty) return;
+      _type = draft['type'] == OrderType.takeaway.api ? OrderType.takeaway : OrderType.dineIn;
+      _tableId = draft['tableId'] as int?;
+      final customer = draft['customerName'] as String? ?? '';
+      final notes = draft['notes'] as String? ?? '';
+      _lastTexts = '$customer|$notes'; // restoring is not an edit: keeps the saved key below
+      _customerController.text = customer;
+      _notesController.text = notes;
+      // Same key as before the interruption: if that order did reach the kitchen, resending it
+      // returns it instead of creating a second one
+      _requestId = draft['requestId'] as String?;
+    } catch (_) {
+      store.setOrderDraft(_userId, null); // written by another version: start clean
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) showInfoSnack(context, 'Se recuperó el pedido que estabas armando.');
+    });
+  }
+
+  void _saveDraft() {
+    if (!_keepsDraft) return;
+    ref
+        .read(settingsStoreProvider)
+        .setOrderDraft(
+          _userId,
+          _cart.isEmpty
+              ? null
+              : {
+                  ..._cart.toJson(),
+                  'type': _type.api,
+                  'tableId': _tableId,
+                  'customerName': _customerController.text,
+                  'notes': _notesController.text,
+                  'requestId': _requestId,
+                  'savedAt': DateTime.now().toIso8601String(),
+                },
+        );
+  }
+
+  void _clearDraft() {
+    if (_keepsDraft) ref.read(settingsStoreProvider).setOrderDraft(_userId, null);
+  }
 
   @override
   void dispose() {
@@ -89,7 +179,7 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
 
   String? _validationError(Map<int, Dish> menu) {
     if (_cart.isEmpty) return 'Agrega al menos un plato';
-    if (_type == OrderType.dineIn && _tableId == null) return 'Selecciona una mesa';
+    if (widget.addTo == null && _type == OrderType.dineIn && _tableId == null) return 'Selecciona una mesa';
     if (_cart.unavailable(menu).isNotEmpty) return 'Hay platos agotados en el pedido';
     return null;
   }
@@ -102,17 +192,21 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
     }
     setState(() => _submitting = true);
     _requestId ??= newRequestId();
+    _saveDraft(); // keeps the key with the draft in case the screen closes before the answer
     try {
-      final order = await ref
-          .read(ordersRepositoryProvider)
-          .create(
-            orderType: _type,
-            tableId: _tableId,
-            customerName: _type == OrderType.takeaway ? _customerController.text : null,
-            notes: _notesController.text,
-            items: _cart.toItems(),
-            requestId: _requestId,
-          );
+      final repository = ref.read(ordersRepositoryProvider);
+      final addTo = widget.addTo;
+      final order = addTo != null
+          ? await repository.addItems(addTo.id, _cart.toItems(), requestId: _requestId)
+          : await repository.create(
+              orderType: _type,
+              tableId: _tableId,
+              customerName: _type == OrderType.takeaway ? _customerController.text : null,
+              notes: _notesController.text,
+              items: _cart.toItems(),
+              requestId: _requestId,
+            );
+      _clearDraft();
       if (mounted) Navigator.of(context).pop(order);
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -147,60 +241,113 @@ class _NewOrderPageState extends ConsumerState<NewOrderPage> {
       builder: (context) => _ReviewSheet(
         cart: _cart,
         menu: menu,
-        target: _type == OrderType.dineIn
-            ? (ref.read(tablesProvider).value ?? const <DiningTable>[])
-                  .firstWhere((t) => t.id == _tableId, orElse: () => const DiningTable(id: 0, label: 'Mesa'))
-                  .label
-            : 'Para llevar',
-        notesController: _notesController,
+        target: switch (widget.addTo) {
+          final order? => 'Agregar al pedido #${order.id} · ${order.target}',
+          null when _type == OrderType.dineIn =>
+            (ref.read(tablesProvider).value ?? const <DiningTable>[])
+                .firstWhere((t) => t.id == _tableId, orElse: () => const DiningTable(id: 0, label: 'Mesa'))
+                .label,
+          null => 'Para llevar',
+        },
+        notesController: widget.addTo == null ? _notesController : null,
       ),
     );
     if (confirmed == true && mounted) await _submit(menu);
   }
 
+  /// Dishes no longer on the menu at all (deactivated, or in a restored draft) have no row to
+  /// remove them from: drop them and say so, instead of blocking the order.
+  void _dropMissing(List<Dish> dishes) {
+    final known = {for (final dish in dishes) dish.id};
+    final missing = [
+      for (final id in _cart.dishIds)
+        if (!known.contains(id)) id,
+    ];
+    if (missing.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _change(() => missing.forEach(_cart.removeDish));
+      showInfoSnack(
+        context,
+        'Se quitaron del pedido ${missing.length} plato(s) que ya no están en la carta.',
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final menuAsync = ref.watch(menuProvider);
+    final addTo = widget.addTo;
+    if (menuAsync.value case final dishes?) _dropMissing(dishes);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Nuevo pedido'), actions: const [ConnectionIndicator()]),
-      body: Column(
-        children: [
-          _TargetSelector(
-            type: _type,
-            tableId: _tableId,
-            customerController: _customerController,
-            onTypeChanged: (type) => _change(() => _type = type),
-            onTableChanged: (id) => _change(() => _tableId = id),
+    // An accidental back swipe must not throw away a cart the waiter spent a minute on
+    return PopScope(
+      // While sending, stay: leaving could lose the answer and the order would be resent later
+      canPop: _cart.isEmpty && !_submitting,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop || _submitting) return;
+        final discard = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('¿Descartar pedido?'),
+            content: const Text('Los platos elegidos no se enviaron a cocina.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Seguir aquí')),
+              FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Descartar')),
+            ],
           ),
-          const Divider(height: 1),
-          Expanded(
-            child: switch (menuAsync) {
-              AsyncValue(value: final dishes?) => _MenuTabs(
-                dishes: dishes,
-                cart: _cart,
-                onAdd: _add,
-                onRemove: (dish) => _change(() => _cart.remove(dish.id)),
-                onNote: _editNote,
-              ),
-              AsyncError(:final error) => ErrorRetryView(
-                error: error,
-                onRetry: () => ref.invalidate(menuProvider),
-              ),
-              _ => const Center(child: CircularProgressIndicator()),
-            },
-          ),
-        ],
-      ),
-      bottomNavigationBar: switch (menuAsync.value) {
-        final dishes? => _CartBar(
-          cart: _cart,
-          menu: {for (final dish in dishes) dish.id: dish},
-          submitting: _submitting,
-          onReview: _review,
-        ),
-        null => null,
+        );
+        if (discard == true && context.mounted) {
+          _clearDraft();
+          Navigator.of(context).pop();
+        }
       },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(addTo == null ? 'Nuevo pedido' : 'Agregar al pedido #${addTo.id}'),
+          actions: const [ConnectionIndicator()],
+        ),
+        body: Column(
+          children: [
+            if (addTo == null)
+              _TargetSelector(
+                type: _type,
+                tableId: _tableId,
+                customerController: _customerController,
+                onTypeChanged: (type) => _change(() => _type = type),
+                onTableChanged: (id) => _change(() => _tableId = id),
+              )
+            else
+              ListTile(leading: const Icon(Icons.add_shopping_cart), title: Text(addTo.target)),
+            const Divider(height: 1),
+            Expanded(
+              child: switch (menuAsync) {
+                AsyncValue(value: final dishes?) => _MenuTabs(
+                  dishes: dishes,
+                  cart: _cart,
+                  onAdd: _add,
+                  onRemove: (dish) => _change(() => _cart.remove(dish.id)),
+                  onNote: _editNote,
+                ),
+                AsyncError(:final error) => ErrorRetryView(
+                  error: error,
+                  onRetry: () => ref.invalidate(menuProvider),
+                ),
+                _ => const Center(child: CircularProgressIndicator()),
+              },
+            ),
+          ],
+        ),
+        bottomNavigationBar: switch (menuAsync.value) {
+          final dishes? => _CartBar(
+            cart: _cart,
+            menu: {for (final dish in dishes) dish.id: dish},
+            submitting: _submitting,
+            onReview: _review,
+          ),
+          null => null,
+        },
+      ),
     );
   }
 }
@@ -483,7 +630,9 @@ class _ReviewSheet extends StatelessWidget {
   final Cart cart;
   final Map<int, Dish> menu;
   final String target;
-  final TextEditingController notesController;
+
+  /// Null when adding to an existing order (it already has its note).
+  final TextEditingController? notesController;
 
   @override
   Widget build(BuildContext context) {
@@ -512,11 +661,12 @@ class _ReviewSheet extends StatelessWidget {
               ],
             ),
           ),
-          TextField(
-            controller: notesController,
-            maxLength: 255,
-            decoration: const InputDecoration(labelText: 'Nota general del pedido (opcional)'),
-          ),
+          if (notesController != null)
+            TextField(
+              controller: notesController,
+              maxLength: 255,
+              decoration: const InputDecoration(labelText: 'Nota general del pedido (opcional)'),
+            ),
           Row(
             children: [
               Expanded(child: Text('Total estimado', style: Theme.of(context).textTheme.titleMedium)),
