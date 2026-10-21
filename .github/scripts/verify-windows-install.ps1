@@ -180,6 +180,13 @@ Check 'MySQL restarts by itself after a crash (service recovery actions)' {
     $failure -match 'RESTART'
 }
 Check 'order edits (migration 003): add a dish, remove one; kitchen and waiter limits' {
+    # The cash count check above closed today: a closed day's orders cannot be edited (409), so
+    # check that first and then reopen the drawer as the owner would
+    $closedOrder = Api POST '/orders' @{ orderType = 'TAKEAWAY'; items = @(@{ dishId = (Api GET '/dishes' $null $auth)[0].id; quantity = 1 }) } $auth
+    $editClosed = try { Api POST "/orders/$($closedOrder.id)/items" @{ items = @(@{ dishId = $closedOrder.items[0].dishId; quantity = 1 }) } $auth | Out-Null; 'accepted' }
+                  catch { [int]$_.Exception.Response.StatusCode }
+    Api POST '/cash/reopen' @{} $auth | Out-Null
+    if ($editClosed -ne 409) { throw "edit on a closed cash day answered $editClosed" }
     $rosa = Api POST '/auth/login' @{ username = 'rosa'; password = 'Rosa-pass-123' }
     $r = @{ Authorization = "Bearer $($rosa.accessToken)" }
     $dish = (Api GET '/dishes' $null $auth)[0]
